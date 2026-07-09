@@ -1,6 +1,6 @@
 ################################################################################
 # Project: Tagebuchstudie – Datenimport
-# File:    01_Read_Data.R
+# File:    01_Read_Clean.R
 #
 #   - Liest die Rohdaten aus CSV-Dateien im Ordner "01_Data" ein.
 #   - Speichert die Datensätze als RDS-Dateien im gleichen Ordner.
@@ -12,8 +12,8 @@
 # Packages
 # ==============================================================================
 
-#install.packages("pacman")
-pacman::p_load("readr")
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load("readr", "tidyverse")
 
 
 # ==============================================================================
@@ -50,6 +50,16 @@ diary <- read_delim(
   show_col_types = FALSE,
   trim_ws = TRUE
 )
+
+
+# ==============================================================================
+# Clean Empty entries
+# ==============================================================================
+
+empty_diary <- diary %>% filter(is.na(firstOpened)) ## lets save them just in case
+
+diary <- diary %>% filter(!is.na(firstOpened)) ## for some reason, we get a ton of empty entries.
+
 
 
 # ==============================================================================
