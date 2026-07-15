@@ -32,6 +32,10 @@ diary_file <- file.path(
   "täglicher fragebogen + screenshot-upload.csv"
 )
 
+outro_file <- file.path(
+  data_dir,
+  "abschlussbefragung tagebuchstudie.csv"
+)
 
 # ==============================================================================
 # Read CSV files
@@ -51,6 +55,12 @@ diary <- read_delim(
   trim_ws = TRUE
 )
 
+outro <- read_delim(
+  outro_file,
+  delim = ";",
+  show_col_types = FALSE,
+  trim_ws = TRUE
+)
 
 # ==============================================================================
 # Clean Empty entries
@@ -59,6 +69,8 @@ diary <- read_delim(
 empty_diary <- diary %>% filter(is.na(firstOpened)) ## lets save them just in case
 
 diary <- diary %>% filter(!is.na(firstOpened)) ## for some reason, we get a ton of empty entries.
+
+outro <- outro %>% filter(!is.na(firstOpened)) ## for some reason, we get a ton of empty entries.
 
 
 
@@ -82,6 +94,13 @@ saveRDS(
   )
 )
 
+saveRDS(
+  outro,
+  file = file.path(
+    data_dir,
+    "abschlussbefragung tagebuchstudie.rds"
+  )
+)
 
 # ==============================================================================
 # Finished
