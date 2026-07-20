@@ -7,6 +7,7 @@
 #
 ################################################################################
 
+rm(list = ls())
 
 # ==============================================================================
 # Packages
@@ -66,13 +67,48 @@ outro <- read_delim(
 # Clean Empty entries
 # ==============================================================================
 
-empty_diary <- diary %>% filter(is.na(firstOpened)) ## lets save them just in case
+## Empty entries entfernen
 
-diary <- diary %>% filter(!is.na(firstOpened)) ## for some reason, we get a ton of empty entries.
+empty_diary <- diary %>% filter(is.na(firstOpened))
 
-outro <- outro %>% filter(!is.na(firstOpened)) ## for some reason, we get a ton of empty entries.
+n_diary_empty <- sum(is.na(diary$firstOpened))
+n_outro_empty <- sum(is.na(outro$firstOpened))
+
+diary <- diary %>% filter(!is.na(firstOpened))
+outro <- outro %>% filter(!is.na(firstOpened))
+
+message("Leere Diary-Einträge entfernt: ", n_diary_empty)
+message("Leere Outro-Einträge entfernt: ", n_outro_empty)
 
 
+## Ausgeschlossene Teilnehmende bestimmen
+
+screening_eliminated <- screening %>%
+  filter(!intro_stop_age | !intro_stop_usage)
+
+screening <- screening %>%
+  filter(intro_stop_age & intro_stop_usage)
+
+users_to_remove <- unique(screening_eliminated$personalParticipantCode)
+
+message("Ausgeschlossene TN: ", length(users_to_remove))
+
+
+## Aus Diary und Outro entfernen
+
+n_diary_before <- nrow(diary)
+n_outro_before <- nrow(outro)
+
+diary <- diary %>%
+  filter(!personalParticipantCode %in% users_to_remove)
+
+outro <- outro %>%
+  filter(!personalParticipantCode %in% users_to_remove)
+
+message("Entfernte Diary-Zeilen: ", n_diary_before - nrow(diary))
+message("Entfernte Outro-Zeilen: ", n_outro_before - nrow(outro))
+message("Verbleibende TN im Screening: ",
+        n_distinct(screening$personalParticipantCode))
 
 # ==============================================================================
 # Save as RDS
