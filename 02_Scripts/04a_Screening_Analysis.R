@@ -1,31 +1,7 @@
 ################################################################################
 # Project: Tagebuchstudie
-# File:    04_Analyse_Screening.R
+# File:    04a_Screening_Analysis.R
 #
-# Purpose:
-#   Aufbereitung und deskriptive Auswertung der Screening-Befragung.
-#
-# Analyseschritte:
-#   1. Daten einlesen und Variablen prüfen
-#   2. Vorläufige Auswahl teilnahmeberechtigter Personen
-#   3. Fehlende Werte und Variablentypen aufbereiten
-#   4. Variablen und Antwortkategorien beschriften
-#   5. Item 5 der Incidentality-Skala invertieren
-#   6. Incidentality-Index bilden
-#   7. Reliabilität der Incidentality-Skala untersuchen
-#   8. Stichprobe deskriptiv beschreiben
-#   9. Plattformnutzung, Informationsbedürfnisse und Kontexte auswerten
-#  10. Tabellen und Abbildungen exportieren
-#
-# Wichtiger Hinweis zur Stichprobe:
-#   Die endgültige präregistrierte Analysestichprobe umfasst nur Personen, die
-#   das Screening vollständig abgeschlossen und mindestens sieben Screenshots
-#   über die siebentägige Tagebuchphase hochgeladen haben.
-#
-#   Da die Anzahl der hochgeladenen Screenshots nicht allein anhand der
-#   Screening-Daten bestimmt werden kann, werden hier zunächst alle Personen
-#   ausgewertet, die beide Screening-Filter bestanden haben. Die endgültige
-#   Fallauswahl muss später durch Verknüpfung mit den Daily-Daten erfolgen.
 #
 # Input:
 #   01_Data/screening-befragung_tagebuchstudie.rds
@@ -63,6 +39,11 @@ pacman::p_load(
 # 02 Paths
 #===============================================================================
 
+helper_script <- file.path(
+  "02_Scripts",
+  "00_Helpers.R"
+)
+
 data_file <- file.path(
   "01_Data",
   "screening-befragung_tagebuchstudie.rds"
@@ -94,227 +75,7 @@ fs::dir_create(figure_folder)
 # 03 Helper functions
 #===============================================================================
 
-# Sichere Umwandlung unterschiedlicher TRUE-/FALSE-Darstellungen
-as_logical_safe <- function(x) {
-  
-  x_character <- stringr::str_to_upper(
-    stringr::str_trim(as.character(x))
-  )
-  
-  dplyr::case_when(
-    x_character %in% c("TRUE", "T", "1", "YES", "Y", "JA") ~ TRUE,
-    x_character %in% c("FALSE", "F", "0", "NO", "N", "NEIN") ~ FALSE,
-    TRUE ~ NA
-  )
-}
-
-
-# Deskriptive Statistiken für metrische oder ordinale Variablen
-continuous_summary <- function(data, variable, variable_label) {
-  
-  x <- data[[variable]]
-  x <- suppressWarnings(as.numeric(x))
-  
-  n_valid <- sum(!is.na(x))
-  n_missing <- sum(is.na(x))
-  
-  if (n_valid == 0) {
-    
-    return(
-      tibble(
-        Variable = variable_label,
-        Variable_Name = variable,
-        N_Valid = 0L,
-        N_Missing = n_missing,
-        Mean = NA_real_,
-        SD = NA_real_,
-        Median = NA_real_,
-        Minimum = NA_real_,
-        Maximum = NA_real_,
-        CI95_Lower = NA_real_,
-        CI95_Upper = NA_real_
-      )
-    )
-  }
-  
-  mean_value <- mean(x, na.rm = TRUE)
-  sd_value <- if (n_valid > 1) sd(x, na.rm = TRUE) else NA_real_
-  
-  if (n_valid > 1 && !is.na(sd_value)) {
-    
-    standard_error <- sd_value / sqrt(n_valid)
-    margin_error <- qt(0.975, df = n_valid - 1) * standard_error
-    
-    ci_lower <- mean_value - margin_error
-    ci_upper <- mean_value + margin_error
-    
-  } else {
-    
-    ci_lower <- NA_real_
-    ci_upper <- NA_real_
-  }
-  
-  tibble(
-    Variable = variable_label,
-    Variable_Name = variable,
-    N_Valid = n_valid,
-    N_Missing = n_missing,
-    Mean = mean_value,
-    SD = sd_value,
-    Median = median(x, na.rm = TRUE),
-    Minimum = min(x, na.rm = TRUE),
-    Maximum = max(x, na.rm = TRUE),
-    CI95_Lower = ci_lower,
-    CI95_Upper = ci_upper
-  )
-}
-
-
-# Häufigkeitstabelle einschließlich fehlender Werte
-frequency_summary <- function(data, variable, variable_label) {
-  
-  values <- as.character(data[[variable]])
-  
-  values <- tidyr::replace_na(
-    values,
-    "Missing"
-  )
-  
-  tibble(
-    Level = values
-  ) %>%
-    count(
-      Level,
-      name = "N"
-    ) %>%
-    mutate(
-      Percent = 100 * N / sum(N),
-      Variable = variable_label,
-      Variable_Name = variable
-    ) %>%
-    select(
-      Variable,
-      Variable_Name,
-      Level,
-      N,
-      Percent
-    )
-}
-
-
-# Antwortverteilungen numerischer Items
-item_distribution <- function(data, variable, variable_label) {
-  
-  values <- suppressWarnings(
-    as.numeric(data[[variable]])
-  )
-  
-  tibble(
-    Response = values
-  ) %>%
-    mutate(
-      Response_Label = if_else(
-        is.na(Response),
-        "Missing",
-        as.character(Response)
-      )
-    ) %>%
-    count(
-      Response,
-      Response_Label,
-      name = "N"
-    ) %>%
-    mutate(
-      Percent = 100 * N / sum(N),
-      Variable = variable_label,
-      Variable_Name = variable
-    ) %>%
-    arrange(
-      is.na(Response),
-      Response
-    ) %>%
-    select(
-      Variable,
-      Variable_Name,
-      Response,
-      Response_Label,
-      N,
-      Percent
-    )
-}
-
-
-# Tabellenblatt formatiert zu einer Excel-Arbeitsmappe hinzufügen
-add_excel_sheet <- function(
-    workbook,
-    sheet_name,
-    data,
-    header_style
-) {
-  
-  # Excel erlaubt höchstens 31 Zeichen für Blattnamen
-  sheet_name <- stringr::str_sub(
-    sheet_name,
-    1,
-    31
-  )
-  
-  openxlsx::addWorksheet(
-    workbook,
-    sheetName = sheet_name
-  )
-  
-  openxlsx::writeData(
-    workbook,
-    sheet = sheet_name,
-    x = data,
-    withFilter = TRUE
-  )
-  
-  if (ncol(data) > 0 && nrow(data) >= 0) {
-    
-    openxlsx::addStyle(
-      workbook,
-      sheet = sheet_name,
-      style = header_style,
-      rows = 1,
-      cols = seq_len(ncol(data)),
-      gridExpand = TRUE
-    )
-    
-    openxlsx::freezePane(
-      workbook,
-      sheet = sheet_name,
-      firstRow = TRUE
-    )
-    
-    openxlsx::setColWidths(
-      workbook,
-      sheet = sheet_name,
-      cols = seq_len(ncol(data)),
-      widths = "auto"
-    )
-  }
-}
-
-
-# Prozentangaben für Balkendiagramme vorbereiten
-plot_frequency_data <- function(data, variable) {
-  
-  variable_quo <- rlang::enquo(variable)
-  
-  data %>%
-    filter(
-      !is.na(!!variable_quo)
-    ) %>%
-    count(
-      !!variable_quo,
-      name = "N"
-    ) %>%
-    mutate(
-      Percent = 100 * N / sum(N)
-    )
-}
+source(helper_script)
 
 
 #===============================================================================
@@ -411,7 +172,7 @@ screening_all <- screening_raw %>%
   mutate(
     intro_stop_age_logical = as_logical_safe(intro_stop_age),
     intro_stop_usage_logical = as_logical_safe(intro_stop_usage),
-    
+
     eligible_screening = (
       intro_stop_age_logical %in% TRUE &
         intro_stop_usage_logical %in% TRUE
@@ -795,9 +556,6 @@ incidentality_items <- screening %>%
     all_of(incidentality_index_items)
   )
 
-# Psychometrische Analysen können insbesondere bei kleinen Stichproben oder
-# Items ohne Varianz scheitern. tryCatch verhindert einen vollständigen
-# Abbruch des Skripts und dokumentiert den Fehler.
 
 incidentality_alpha <- tryCatch(
   psych::alpha(
@@ -806,25 +564,36 @@ incidentality_alpha <- tryCatch(
     warnings = FALSE
   ),
   error = function(e) {
+    
     warning(
       "Cronbachs Alpha konnte nicht berechnet werden: ",
       conditionMessage(e)
     )
+    
     NULL
   }
 )
 
+
+# Bei einem eindimensionalen Modell ist Omega total relevant.
+# Omega hierarchical setzt eine hierarchische bzw. bifaktorielle Struktur
+# mit mehreren Faktoren voraus und wird daher hier nicht berichtet.
+
 incidentality_omega <- tryCatch(
-  psych::omega(
-    incidentality_items,
-    nfactors = 1,
-    plot = FALSE
+  suppressWarnings(
+    psych::omega(
+      incidentality_items,
+      nfactors = 1,
+      plot = FALSE
+    )
   ),
   error = function(e) {
+    
     warning(
-      "Omega konnte nicht berechnet werden: ",
+      "Omega total konnte nicht berechnet werden: ",
       conditionMessage(e)
     )
+    
     NULL
   }
 )
@@ -832,10 +601,14 @@ incidentality_omega <- tryCatch(
 
 reliability_summary <- tibble(
   Scale = "Incidentality",
-  Number_of_Items = length(incidentality_index_items),
+  
+  Number_of_Items =
+    length(incidentality_index_items),
   
   N_Complete = sum(
-    complete.cases(incidentality_items)
+    complete.cases(
+      incidentality_items
+    )
   ),
   
   Cronbach_Alpha = if (
@@ -858,16 +631,6 @@ reliability_summary <- tibble(
     )
   },
   
-  Omega_Hierarchical = if (
-    is.null(incidentality_omega)
-  ) {
-    NA_real_
-  } else {
-    unname(
-      incidentality_omega$omega_h
-    )
-  },
-  
   Omega_Total = if (
     is.null(incidentality_omega)
   ) {
@@ -876,68 +639,13 @@ reliability_summary <- tibble(
     unname(
       incidentality_omega$omega.tot
     )
-  }
+  },
+  
+  Note = paste0(
+    "Omega hierarchical wird nicht berichtet, ",
+    "da ein eindimensionales Modell mit einem Faktor angenommen wird."
+  )
 )
-
-
-alpha_item_statistics <- if (
-  is.null(incidentality_alpha)
-) {
-  
-  tibble(
-    Note = "Cronbachs Alpha konnte nicht berechnet werden."
-  )
-  
-} else {
-  
-  incidentality_alpha$item.stats %>%
-    as.data.frame() %>%
-    tibble::rownames_to_column(
-      "Item"
-    ) %>%
-    as_tibble()
-}
-
-
-alpha_if_item_deleted <- if (
-  is.null(incidentality_alpha)
-) {
-  
-  tibble(
-    Note = "Cronbachs Alpha konnte nicht berechnet werden."
-  )
-  
-} else {
-  
-  incidentality_alpha$alpha.drop %>%
-    as.data.frame() %>%
-    tibble::rownames_to_column(
-      "Item_Removed"
-    ) %>%
-    as_tibble()
-}
-
-
-omega_loadings <- if (
-  is.null(incidentality_omega)
-) {
-  
-  tibble(
-    Note = "Omega konnte nicht berechnet werden."
-  )
-  
-} else {
-  
-  as.data.frame(
-    unclass(
-      incidentality_omega$schmid$sl
-    )
-  ) %>%
-    tibble::rownames_to_column(
-      "Item"
-    ) %>%
-    as_tibble()
-}
 
 
 #===============================================================================
@@ -1065,13 +773,69 @@ platform_descriptives <- platform_long %>%
     Platform
   ) %>%
   summarise(
-    N_Valid = sum(!is.na(Usage_Frequency)),
-    N_Missing = sum(is.na(Usage_Frequency)),
-    Mean = mean(Usage_Frequency, na.rm = TRUE),
-    SD = sd(Usage_Frequency, na.rm = TRUE),
-    Median = median(Usage_Frequency, na.rm = TRUE),
-    Minimum = min(Usage_Frequency, na.rm = TRUE),
-    Maximum = max(Usage_Frequency, na.rm = TRUE),
+    N_Valid = sum(
+      !is.na(Usage_Frequency)
+    ),
+    
+    N_Missing = sum(
+      is.na(Usage_Frequency)
+    ),
+    
+    Mean = if (
+      sum(!is.na(Usage_Frequency)) > 0
+    ) {
+      mean(
+        Usage_Frequency,
+        na.rm = TRUE
+      )
+    } else {
+      NA_real_
+    },
+    
+    SD = if (
+      sum(!is.na(Usage_Frequency)) > 1
+    ) {
+      sd(
+        Usage_Frequency,
+        na.rm = TRUE
+      )
+    } else {
+      NA_real_
+    },
+    
+    Median = if (
+      sum(!is.na(Usage_Frequency)) > 0
+    ) {
+      median(
+        Usage_Frequency,
+        na.rm = TRUE
+      )
+    } else {
+      NA_real_
+    },
+    
+    Minimum = if (
+      sum(!is.na(Usage_Frequency)) > 0
+    ) {
+      min(
+        Usage_Frequency,
+        na.rm = TRUE
+      )
+    } else {
+      NA_real_
+    },
+    
+    Maximum = if (
+      sum(!is.na(Usage_Frequency)) > 0
+    ) {
+      max(
+        Usage_Frequency,
+        na.rm = TRUE
+      )
+    } else {
+      NA_real_
+    },
+    
     .groups = "drop"
   )
 
@@ -1127,9 +891,6 @@ platform_distribution <- platform_long %>%
 # 19 Information needs
 #===============================================================================
 
-# Die vier Informationsbedürfnisse werden entsprechend der Präregistrierung
-# als separate Konstrukte bzw. Einzelitems ausgewertet. Es wird kein
-# unbegründeter Gesamtindex über alle vier Informationsbedürfnisse gebildet.
 
 information_needs_long <- screening %>%
   select(
@@ -1479,6 +1240,55 @@ saveRDS(
 
 
 #===============================================================================
+# Alpha item statistics
+#===============================================================================
+
+alpha_item_statistics <- if (
+  is.null(incidentality_alpha)
+) {
+  
+  tibble(
+    Item = character(),
+    N = numeric(),
+    Raw_R = numeric(),
+    Standardized_R = numeric(),
+    Corrected_Item_Total_R = numeric(),
+    Alpha_If_Deleted = numeric()
+  )
+  
+} else {
+  
+  incidentality_alpha$item.stats %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(
+      var = "Item"
+    ) %>%
+    as_tibble() %>%
+    transmute(
+      Item = Item,
+      N = n,
+      Raw_R = raw.r,
+      Standardized_R = std.r,
+      Corrected_Item_Total_R = r.drop,
+      Mean = mean,
+      SD = sd
+    ) %>%
+    left_join(
+      incidentality_alpha$alpha.drop %>%
+        as.data.frame() %>%
+        tibble::rownames_to_column(
+          var = "Item"
+        ) %>%
+        as_tibble() %>%
+        transmute(
+          Item = Item,
+          Alpha_If_Deleted = raw_alpha
+        ),
+      by = "Item"
+    )
+}
+
+#===============================================================================
 # 25 Create Excel workbook
 #===============================================================================
 
@@ -1645,19 +1455,20 @@ add_excel_sheet(
   header_style
 )
 
-add_excel_sheet(
-  workbook,
-  "Alpha_Item_Deleted",
-  alpha_if_item_deleted,
-  header_style
-)
+# add_excel_sheet(
+#   workbook,
+#   "Alpha_Item_Deleted",
+#   alpha_if_item_deleted,
+#   header_style
+# )
 
-add_excel_sheet(
-  workbook,
-  "Omega_Loadings",
-  omega_loadings,
-  header_style
-)
+
+# add_excel_sheet(
+#   workbook,
+#   "Omega_Loadings",
+#   omega_loadings,
+#   header_style
+# )
 
 add_excel_sheet(
   workbook,
@@ -1677,10 +1488,9 @@ openxlsx::saveWorkbook(
 # 26 Visual design
 #===============================================================================
 
-# Einheitliches, farbenblindheitsfreundliches Farbschema
 project_colors <- c(
   primary = "#315F6B",
-  secondary = "#7D9DA3",
+  secondary = "#78999E",
   accent = "#C49A5A",
   dark = "#26383F",
   medium = "#66777D",
@@ -1689,25 +1499,21 @@ project_colors <- c(
   white = "#FFFFFF"
 )
 
-# Plattformfarben innerhalb desselben gedämpften Farbschemas
+
 platform_colors <- c(
   Facebook = "#315F6B",
   Instagram = "#4F7E82",
-  TikTok = "#7D9DA3",
+  TikTok = "#78999E",
   X = "#65747B"
 )
 
 
-# Einheitliches Theme für alle Abbildungen
 theme_project <- function(base_size = 12) {
   
   theme_minimal(
     base_size = base_size
   ) +
-    
     theme(
-      
-      # Hintergrund
       plot.background = element_rect(
         fill = project_colors["white"],
         color = NA
@@ -1718,7 +1524,6 @@ theme_project <- function(base_size = 12) {
         color = NA
       ),
       
-      # Titel und Untertitel
       plot.title = element_text(
         color = project_colors["dark"],
         face = "bold",
@@ -1745,22 +1550,9 @@ theme_project <- function(base_size = 12) {
         )
       ),
       
-      # Achsen
       axis.title = element_text(
         color = project_colors["dark"],
         face = "bold"
-      ),
-      
-      axis.title.x = element_text(
-        margin = margin(
-          t = 10
-        )
-      ),
-      
-      axis.title.y = element_text(
-        margin = margin(
-          r = 10
-        )
       ),
       
       axis.text = element_text(
@@ -1769,7 +1561,6 @@ theme_project <- function(base_size = 12) {
       
       axis.ticks = element_blank(),
       
-      # Gitternetz
       panel.grid.major.x = element_blank(),
       
       panel.grid.major.y = element_line(
@@ -1779,7 +1570,6 @@ theme_project <- function(base_size = 12) {
       
       panel.grid.minor = element_blank(),
       
-      # Facetten
       strip.background = element_rect(
         fill = project_colors["light"],
         color = NA
@@ -1789,26 +1579,22 @@ theme_project <- function(base_size = 12) {
         color = project_colors["dark"],
         face = "bold",
         margin = margin(
-          t = 7,
-          b = 7
+          7,
+          7,
+          7,
+          7
         )
       ),
       
-      # Legende
       legend.position = "bottom",
       
       legend.title = element_blank(),
       
-      legend.text = element_text(
-        color = project_colors["dark"]
-      ),
-      
-      # Allgemeine Abstände
       plot.margin = margin(
-        t = 15,
-        r = 20,
-        b = 15,
-        l = 15
+        15,
+        22,
+        15,
+        15
       )
     )
 }
@@ -1819,15 +1605,6 @@ theme_set(
 )
 
 
-# Prozentformat für deutsche Abbildungen
-percent_labels <- scales::label_number(
-  accuracy = 1,
-  suffix = " %",
-  decimal.mark = ","
-)
-
-
-# Hilfsfunktion zum einheitlichen Speichern
 save_project_plot <- function(
     plot,
     filename,
@@ -1844,7 +1621,9 @@ save_project_plot <- function(
     width = width,
     height = height,
     dpi = 300,
-    bg = project_colors["white"]
+    bg = unname(
+      project_colors["white"]
+    )
   )
 }
 
@@ -1853,28 +1632,37 @@ save_project_plot <- function(
 # 27 Figure: Age distribution
 #===============================================================================
 
+age_plot_data <- screening %>%
+  filter(
+    !is.na(intro_age_num)
+  )
+
+
 figure_age <- ggplot(
-  screening,
+  age_plot_data,
   aes(
     x = intro_age_num
   )
 ) +
-  
   geom_histogram(
     binwidth = 2,
     boundary = 0,
-    fill = project_colors["primary"],
-    color = project_colors["white"],
+    fill = unname(
+      project_colors["primary"]
+    ),
+    color = unname(
+      project_colors["white"]
+    ),
     linewidth = 0.4
   ) +
-  
   geom_vline(
     xintercept = age_summary$Mean,
-    color = project_colors["accent"],
+    color = unname(
+      project_colors["accent"]
+    ),
     linewidth = 0.9,
     linetype = "22"
   ) +
-  
   annotate(
     geom = "text",
     x = age_summary$Mean,
@@ -1889,23 +1677,16 @@ figure_age <- ggplot(
         decimal.mark = ","
       )
     ),
-    color = project_colors["accent"],
+    color = unname(
+      project_colors["accent"]
+    ),
     fontface = "bold",
     hjust = -0.15,
     vjust = 1.5,
     size = 3.7
   ) +
-  
-  scale_x_continuous(
-    expand = expansion(
-      mult = c(
-        0.01,
-        0.03
-      )
-    )
-  ) +
-  
   scale_y_continuous(
+    breaks = scales::breaks_pretty(),
     expand = expansion(
       mult = c(
         0,
@@ -1913,7 +1694,6 @@ figure_age <- ggplot(
       )
     )
   ) +
-  
   labs(
     title = "Altersverteilung",
     subtitle = paste0(
@@ -1951,42 +1731,43 @@ save_project_plot(
 # 28 Figure: Gender
 #===============================================================================
 
-gender_plot_data <- plot_frequency_data(
-  screening,
-  gender
-)
+gender_plot_data <- screening %>%
+  filter(
+    !is.na(gender)
+  ) %>%
+  count(
+    gender,
+    .drop = FALSE,
+    name = "N"
+  )
 
 
 figure_gender <- ggplot(
   gender_plot_data,
   aes(
     x = gender,
-    y = Percent
+    y = N
   )
 ) +
-  
   geom_col(
     width = 0.62,
-    fill = project_colors["primary"]
+    fill = unname(
+      project_colors["primary"]
+    )
   ) +
-  
   geom_text(
     aes(
-      label = scales::number(
-        Percent,
-        accuracy = 0.1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
+      label = N
     ),
-    color = project_colors["dark"],
+    color = unname(
+      project_colors["dark"]
+    ),
     fontface = "bold",
-    vjust = -0.55,
+    vjust = -0.45,
     size = 3.8
   ) +
-  
   scale_y_continuous(
-    labels = percent_labels,
+    breaks = scales::breaks_pretty(),
     expand = expansion(
       mult = c(
         0,
@@ -1994,16 +1775,14 @@ figure_gender <- ggplot(
       )
     )
   ) +
-  
   coord_cartesian(
     clip = "off"
   ) +
-  
   labs(
     title = "Geschlecht",
-    subtitle = "Verteilung in der vorläufig teilnahmeberechtigten Stichprobe",
+    subtitle = "Absolute Häufigkeiten",
     x = NULL,
-    y = "Anteil der Teilnehmenden"
+    y = "Anzahl der Teilnehmenden"
   )
 
 
@@ -2017,42 +1796,43 @@ save_project_plot(
 # 29 Figure: Education
 #===============================================================================
 
-education_plot_data <- plot_frequency_data(
-  screening,
-  education_three_level
-)
+education_plot_data <- screening %>%
+  filter(
+    !is.na(education_three_level)
+  ) %>%
+  count(
+    education_three_level,
+    .drop = FALSE,
+    name = "N"
+  )
 
 
 figure_education <- ggplot(
   education_plot_data,
   aes(
     x = education_three_level,
-    y = Percent
+    y = N
   )
 ) +
-  
   geom_col(
     width = 0.62,
-    fill = project_colors["primary"]
+    fill = unname(
+      project_colors["primary"]
+    )
   ) +
-  
   geom_text(
     aes(
-      label = scales::number(
-        Percent,
-        accuracy = 0.1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
+      label = N
     ),
-    color = project_colors["dark"],
+    color = unname(
+      project_colors["dark"]
+    ),
     fontface = "bold",
-    vjust = -0.55,
+    vjust = -0.45,
     size = 3.8
   ) +
-  
   scale_y_continuous(
-    labels = percent_labels,
+    breaks = scales::breaks_pretty(),
     expand = expansion(
       mult = c(
         0,
@@ -2060,16 +1840,14 @@ figure_education <- ggplot(
       )
     )
   ) +
-  
   coord_cartesian(
     clip = "off"
   ) +
-  
   labs(
     title = "Bildungsniveau",
-    subtitle = "Dreistufige Rekodierung der Bildungsabschlüsse",
+    subtitle = "Absolute Häufigkeiten der dreistufigen Rekodierung",
     x = NULL,
-    y = "Anteil der Teilnehmenden"
+    y = "Anzahl der Teilnehmenden"
   )
 
 
@@ -2083,153 +1861,196 @@ save_project_plot(
 # 30 Figure: Weekly platform use
 #===============================================================================
 
+platform_weekly_plot_data <- platform_long %>%
+  mutate(
+    Weekly_Category = case_when(
+      Weekly_Use %in% TRUE ~
+        "Mindestens wöchentlich",
+      
+      Weekly_Use %in% FALSE ~
+        "Seltener als wöchentlich",
+      
+      TRUE ~ NA_character_
+    ),
+    
+    Weekly_Category = factor(
+      Weekly_Category,
+      levels = c(
+        "Mindestens wöchentlich",
+        "Seltener als wöchentlich"
+      )
+    )
+  ) %>%
+  filter(
+    !is.na(Weekly_Category)
+  ) %>%
+  count(
+    Platform,
+    Weekly_Category,
+    .drop = FALSE,
+    name = "N"
+  )
+
+
+weekly_colors <- c(
+  `Mindestens wöchentlich` =
+    unname(
+      project_colors["primary"]
+    ),
+  
+  `Seltener als wöchentlich` =
+    unname(
+      project_colors["light"]
+    )
+)
+
+
 figure_platform_weekly <- ggplot(
-  platform_weekly_summary,
+  platform_weekly_plot_data,
   aes(
     x = Platform,
-    y = Percent_Weekly,
-    fill = Platform
+    y = N,
+    fill = Weekly_Category
   )
 ) +
-  
   geom_col(
-    width = 0.62
+    position = position_dodge(
+      width = 0.72
+    ),
+    width = 0.66
   ) +
-  
   geom_text(
     aes(
-      label = scales::number(
-        Percent_Weekly,
-        accuracy = 0.1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
+      label = N
     ),
-    color = project_colors["dark"],
+    position = position_dodge(
+      width = 0.72
+    ),
+    vjust = -0.4,
+    color = unname(
+      project_colors["dark"]
+    ),
     fontface = "bold",
-    vjust = -0.55,
-    size = 3.8
+    size = 3.5
   ) +
-  
   scale_fill_manual(
-    values = platform_colors
+    values = weekly_colors
   ) +
-  
   scale_y_continuous(
-    labels = percent_labels,
-    limits = c(
-      0,
-      100
-    ),
-    breaks = seq(
-      0,
-      100,
-      20
-    ),
+    breaks = scales::breaks_pretty(),
     expand = expansion(
       mult = c(
         0,
-        0.08
+        0.12
       )
     )
   ) +
-  
-  coord_cartesian(
-    clip = "off"
-  ) +
-  
-  guides(
-    fill = "none"
-  ) +
-  
   labs(
     title = "Mindestens wöchentliche Plattformnutzung",
-    subtitle = "Anteil mit Nutzung an mindestens einem Tag pro Woche",
+    subtitle = "Absolute Häufigkeiten",
     x = NULL,
-    y = "Anteil der Teilnehmenden"
+    y = "Anzahl der Teilnehmenden"
   )
 
 
 save_project_plot(
   figure_platform_weekly,
-  "Screening_Platform_Weekly.png"
+  "Screening_Platform_Weekly.png",
+  width = 8
 )
 
 
 #===============================================================================
-# 31 Figure: Mean platform-use frequency
+# 31 Figure: Platform-use frequency distributions
 #===============================================================================
 
-figure_platform_mean <- ggplot(
-  platform_descriptives,
+platform_frequency_plot_data <- platform_long %>%
+  filter(
+    !is.na(Usage_Frequency)
+  ) %>%
+  mutate(
+    Usage_Frequency_Label = factor(
+      Usage_Frequency,
+      levels = 1:8,
+      labels = frequency_levels,
+      ordered = TRUE
+    )
+  ) %>%
+  count(
+    Platform,
+    Usage_Frequency_Label,
+    .drop = FALSE,
+    name = "N"
+  )
+
+
+figure_platform_frequency <- ggplot(
+  platform_frequency_plot_data,
   aes(
-    x = Platform,
-    y = Mean,
-    fill = Platform
+    x = N,
+    y = Usage_Frequency_Label
   )
 ) +
-  
   geom_col(
-    width = 0.62
+    width = 0.68,
+    fill = unname(
+      project_colors["primary"]
+    )
   ) +
-  
-  geom_errorbar(
+  geom_text(
     aes(
-      ymin = pmax(
-        Mean - SD,
-        1
-      ),
-      ymax = pmin(
-        Mean + SD,
-        8
+      label = if_else(
+        N > 0,
+        as.character(N),
+        ""
       )
     ),
-    color = project_colors["dark"],
-    width = 0.14,
-    linewidth = 0.65
-  ) +
-  
-  geom_point(
-    color = project_colors["white"],
-    size = 2.4
-  ) +
-  
-  scale_fill_manual(
-    values = platform_colors
-  ) +
-  
-  scale_y_continuous(
-    limits = c(
-      1,
-      8
+    hjust = -0.2,
+    color = unname(
+      project_colors["dark"]
     ),
-    breaks = 1:8,
+    fontface = "bold",
+    size = 3.2
+  ) +
+  facet_wrap(
+    ~ Platform,
+    ncol = 2
+  ) +
+  scale_x_continuous(
+    breaks = scales::breaks_pretty(),
     expand = expansion(
       mult = c(
         0,
-        0.03
+        0.14
       )
     )
   ) +
-  
-  guides(
-    fill = "none"
+  coord_cartesian(
+    clip = "off"
   ) +
-  
   labs(
     title = "Häufigkeit der Plattformnutzung",
-    subtitle = "Mittelwerte und Standardabweichungen",
-    x = NULL,
-    y = "Nutzungshäufigkeit (1–8)",
-    caption = paste0(
-      "1 = nie; 8 = mehrmals täglich"
-    )
+    subtitle = "Absolute Häufigkeiten der Antwortkategorien",
+    x = "Anzahl der Teilnehmenden",
+    y = NULL
+  ) +
+  theme(
+    panel.grid.major.x = element_line(
+      color = unname(
+        project_colors["grid"]
+      ),
+      linewidth = 0.4
+    ),
+    
+    panel.grid.major.y = element_blank()
   )
 
 
 save_project_plot(
-  figure_platform_mean,
-  "Screening_Platform_Means.png"
+  figure_platform_frequency,
+  "Screening_Platform_Frequencies.png",
+  width = 11,
+  height = 8
 )
 
 
@@ -2237,48 +2058,46 @@ save_project_plot(
 # 32 Figure: Information needs
 #===============================================================================
 
+information_needs_plot_data <- information_needs_descriptives %>%
+  filter(
+    N_Valid > 0,
+    is.finite(Mean),
+    is.finite(CI95_Lower),
+    is.finite(CI95_Upper)
+  )
+
+
 figure_information_needs <- ggplot(
-  information_needs_descriptives,
+  information_needs_plot_data,
   aes(
     x = Information_Need,
     y = Mean
   )
 ) +
-  
-  geom_col(
-    width = 0.62,
-    fill = project_colors["secondary"]
+  geom_point(
+    color = unname(
+      project_colors["primary"]
+    ),
+    size = 3.2
   ) +
-  
   geom_errorbar(
     aes(
       ymin = CI95_Lower,
       ymax = CI95_Upper
     ),
-    color = project_colors["accent"],
-    width = 0.14,
+    color = unname(
+      project_colors["accent"]
+    ),
+    width = 0.12,
     linewidth = 0.85
   ) +
-  
-  geom_point(
-    color = project_colors["dark"],
-    size = 2.3
-  ) +
-  
   scale_y_continuous(
     limits = c(
       1,
       5
     ),
-    breaks = 1:5,
-    expand = expansion(
-      mult = c(
-        0,
-        0.03
-      )
-    )
+    breaks = 1:5
   ) +
-  
   labs(
     title = "Informationsbedürfnisse",
     subtitle = "Mittelwerte und 95%-Konfidenzintervalle",
@@ -2299,64 +2118,51 @@ save_project_plot(
 # 33 Figure: Incidentality index
 #===============================================================================
 
+incidentality_plot_data <- screening %>%
+  filter(
+    !is.na(incidentality_index),
+    is.finite(incidentality_index)
+  )
+
+
 figure_incidentality <- ggplot(
-  screening,
+  incidentality_plot_data,
   aes(
     x = incidentality_index
   )
 ) +
-  
   geom_histogram(
     binwidth = 0.25,
     boundary = 1,
-    fill = project_colors["primary"],
-    color = project_colors["white"],
+    fill = unname(
+      project_colors["primary"]
+    ),
+    color = unname(
+      project_colors["white"]
+    ),
     linewidth = 0.4
   ) +
-  
   geom_vline(
-    xintercept = incidentality_index_summary$Mean,
-    color = project_colors["accent"],
+    xintercept =
+      incidentality_index_summary$Mean,
+    
+    color = unname(
+      project_colors["accent"]
+    ),
     linewidth = 0.9,
     linetype = "22"
   ) +
-  
-  annotate(
-    geom = "text",
-    x = incidentality_index_summary$Mean,
-    y = Inf,
-    label = paste0(
-      "M = ",
-      format(
-        round(
-          incidentality_index_summary$Mean,
-          2
-        ),
-        decimal.mark = ","
-      )
-    ),
-    color = project_colors["accent"],
-    fontface = "bold",
-    hjust = -0.15,
-    vjust = 1.5,
-    size = 3.7
-  ) +
-  
   scale_x_continuous(
-    limits = c(
+    breaks = 1:5
+  ) +
+  coord_cartesian(
+    xlim = c(
       1,
       5
-    ),
-    breaks = 1:5,
-    expand = expansion(
-      mult = c(
-        0.01,
-        0.02
-      )
     )
   ) +
-  
   scale_y_continuous(
+    breaks = scales::breaks_pretty(),
     expand = expansion(
       mult = c(
         0,
@@ -2364,7 +2170,6 @@ figure_incidentality <- ggplot(
       )
     )
   ) +
-  
   labs(
     title = "Incidentality-Index",
     subtitle = paste0(
@@ -2389,7 +2194,10 @@ figure_incidentality <- ggplot(
     ),
     x = "Incidentality (1–5)",
     y = "Anzahl der Teilnehmenden",
-    caption = "Höhere Werte stehen für eine stärker inzidentelle Informationsnutzung."
+    caption = paste0(
+      "Höhere Werte stehen für eine stärker ",
+      "inzidentelle Informationsnutzung."
+    )
   )
 
 
@@ -2403,126 +2211,141 @@ save_project_plot(
 # 34 Figure: Typical contexts
 #===============================================================================
 
-context_plot_data <- screening %>%
-  
-  transmute(
-    personalParticipantCode,
-    
-    Räumlich = as.character(
-      context_local
-    ),
-    
-    Sozial = as.character(
-      context_social
-    )
-  ) %>%
-  
-  pivot_longer(
-    cols = c(
-      Räumlich,
-      Sozial
-    ),
-    names_to = "Context_Dimension",
-    values_to = "Context"
-  ) %>%
-  
+# Die beiden Dimensionen werden getrennt ausgezählt.
+# .drop = FALSE sorgt dafür, dass auch unbeobachtete Kategorien mit N = 0
+# im Diagramm erhalten bleiben.
+
+context_local_plot_data <- screening %>%
   filter(
-    !is.na(Context)
+    !is.na(context_local)
   ) %>%
-  
   count(
-    Context_Dimension,
-    Context,
+    context_local,
+    .drop = FALSE,
     name = "N"
   ) %>%
-  
-  group_by(
-    Context_Dimension
+  transmute(
+    Context_Dimension = "Räumlich",
+    Context = as.character(
+      context_local
+    ),
+    N
+  )
+
+
+context_social_plot_data <- screening %>%
+  filter(
+    !is.na(context_social)
   ) %>%
-  
+  count(
+    context_social,
+    .drop = FALSE,
+    name = "N"
+  ) %>%
+  transmute(
+    Context_Dimension = "Sozial",
+    Context = as.character(
+      context_social
+    ),
+    N
+  )
+
+
+context_plot_data <- bind_rows(
+  context_local_plot_data,
+  context_social_plot_data
+) %>%
   mutate(
-    Percent = 100 * N / sum(N)
-  ) %>%
-  
-  ungroup()
+    Context_Dimension = factor(
+      Context_Dimension,
+      levels = c(
+        "Räumlich",
+        "Sozial"
+      )
+    )
+  )
 
 
 context_colors <- c(
-  Räumlich = project_colors["primary"],
-  Sozial = project_colors["accent"]
+  Räumlich =
+    unname(
+      project_colors["primary"]
+    ),
+  
+  Sozial =
+    unname(
+      project_colors["accent"]
+    )
 )
 
 
 figure_contexts <- ggplot(
   context_plot_data,
   aes(
-    x = reorder(
-      Context,
-      Percent
-    ),
-    y = Percent,
+    x = N,
+    y = Context,
     fill = Context_Dimension
   )
 ) +
-  
   geom_col(
-    width = 0.62
+    width = 0.64
   ) +
-  
   geom_text(
     aes(
-      label = scales::number(
-        Percent,
-        accuracy = 0.1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
+      label = N
     ),
-    color = project_colors["dark"],
+    hjust = -0.2,
+    color = unname(
+      project_colors["dark"]
+    ),
     fontface = "bold",
-    hjust = -0.15,
-    size = 3.6
+    size = 3.5
   ) +
-  
-  coord_flip(
-    clip = "off"
-  ) +
-  
   facet_wrap(
     ~ Context_Dimension,
-    scales = "free_y"
+    scales = "free_y",
+    ncol = 2
   ) +
-  
   scale_fill_manual(
     values = context_colors
   ) +
-  
-  scale_y_continuous(
-    labels = percent_labels,
+  scale_x_continuous(
+    breaks = scales::breaks_pretty(),
     expand = expansion(
       mult = c(
         0,
-        0.16
+        0.15
       )
     )
   ) +
-  
+  coord_cartesian(
+    clip = "off"
+  ) +
   guides(
     fill = "none"
   ) +
-  
   labs(
     title = "Typische Nutzungskontexte",
-    subtitle = "Räumliche und soziale Situation der Social-Media-Nutzung",
-    x = NULL,
-    y = "Anteil der Teilnehmenden"
+    subtitle = "Absolute Häufigkeiten; nicht gewählte Kategorien werden mit N = 0 dargestellt",
+    x = "Anzahl der Teilnehmenden",
+    y = NULL
+  ) +
+  theme(
+    panel.grid.major.x = element_line(
+      color = unname(
+        project_colors["grid"]
+      ),
+      linewidth = 0.4
+    ),
+    
+    panel.grid.major.y = element_blank()
   )
 
 
 save_project_plot(
   figure_contexts,
   "Screening_Contexts.png",
-  width = 10,
+  width = 11,
   height = 6
 )
 #===============================================================================
@@ -2577,15 +2400,11 @@ cat(
 )
 
 cat(
-  "Hierarchical omega: ",
-  round(reliability_summary$Omega_Hierarchical, 3),
-  "\n",
-  sep = ""
-)
-
-cat(
-  "Total omega: ",
-  round(reliability_summary$Omega_Total, 3),
+  "Omega total: ",
+  round(
+    reliability_summary$Omega_Total,
+    3
+  ),
   "\n",
   sep = ""
 )
