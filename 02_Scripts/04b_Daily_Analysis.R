@@ -2,63 +2,67 @@
 # Project: Tagebuchstudie
 # File:    04b_Daily_Analysis.R
 #
-# Purpose:
-#   Auswertung der vollständig ausgefüllten Coding-Datei und der darin
-#   enthaltenen Angaben aus der Daily-Befragung.
-#
-# Analyseeinheit:
-#   Eine Zeile entspricht einem vollständig codierten Screenshot.
-#
-# Primäre Inhalte:
-#   - Topics
-#   - Quellen-/Account-Kategorien
-#   - konkrete Quellen-/Account-Namen
-#   - Plattformen
-#   - Medienformate
-#   - Incidentality
-#   - Selektions- und Engagementpraktiken
-#   - räumliche und soziale Nutzungskontexte
-#
-# Auswertungsperspektiven:
-#   1. Screenshot-gewichtet:
-#      Jeder Screenshot geht gleich stark in die Auswertung ein.
-#
-#   2. Personen-gewichtet:
-#      Zunächst werden Anteile pro Person berechnet. Anschließend werden diese
-#      Personenanteile deskriptiv zusammengefasst. Personen mit sehr vielen
-#      Screenshots dominieren dadurch nicht die Ergebnisse.
-#
-# Präregistriertes Einschlusskriterium:
-#   Es werden nur Personen berücksichtigt, die mindestens sieben Screenshots
-#   hochgeladen haben. Die Screenshots müssen nicht gleichmäßig über die sieben
-#   Tage verteilt sein.
-#
-# Explorative Analysen:
-#   - Topic, Quelle und Format nach Plattform
-#   - Incidentality nach Plattform, Topic, Quelle und Format
-#   - Interaktionspraktiken nach Content- und Nutzungseigenschaften
-#   - individuelle Vielfalt von Topics, Quellen, Plattformen und Formaten
-#   - optionale logistische Mehrebenenmodelle mit Random Intercept für Personen
-#
-# Input:
+# Inputs:
 #   06_Coding/coding_sheet.xlsx
-#
-# Optionaler Input:
 #   03_Output/screening_prepared.rds
 #
-# Output:
+# Outputs:
 #   03_Output/Daily_Results.xlsx
 #   03_Output/daily_screenshot_level.rds
 #   03_Output/daily_participant_level.rds
 #   03_Output/daily_exploratory_models.rds
 #
+# Optional simulation output:
+#   06_Coding/coding_sheet_simulated.xlsx
+#
 # Figures:
 #   04_Figures/Daily_*.png
+#   or, when simulation is active:
+#   04_Figures/Simulated_Daily/Daily_*.png
 ################################################################################
+
+rm(list = ls())
 
 
 #===============================================================================
-# 01 Packages
+# 01 Settings
+#===============================================================================
+
+# Set TRUE while the coding sheet is not yet completed. Missing manual coding
+# values are then filled with reproducible synthetic values. The original coding
+# sheet is never overwritten.
+simulate_coding <- TRUE
+simulation_seed <- 20260729
+simulation_overwrite_existing <- FALSE
+write_simulated_coding_sheet <- TRUE
+
+# The simulation can use screening variables to create plausible test patterns.
+# This is useful for checking plots and models, but simulated associations must
+# never be interpreted substantively.
+simulation_use_screening_patterns <- TRUE
+
+# Inclusion follows the preregistration: complete screening plus at least seven
+# uploaded screenshots during the diary period.
+minimum_screenshots <- 7
+require_screening_match <- TRUE
+
+# Stop when the final, non-simulated coding sheet still contains incomplete or
+# invalid manual codes. While simulation is active, missing codes are filled.
+strict_coding_check <- TRUE
+
+# Optional exploratory generalized linear mixed models. Models are only fitted
+# when there are enough observations, participants and outcome events.
+run_mixed_models <- TRUE
+minimum_model_n <- 100
+minimum_model_participants <- 20
+minimum_model_events <- 15
+
+coding_sheet_name <- "Coding"
+expected_study_days <- 1:7
+
+
+#===============================================================================
+# 02 Packages
 #===============================================================================
 
 if (!requireNamespace("pacman", quietly = TRUE)) {
@@ -67,41 +71,13 @@ if (!requireNamespace("pacman", quietly = TRUE)) {
 
 pacman::p_load(
   tidyverse,
-  readxl,
-  openxlsx,
   janitor,
+  openxlsx,
   fs,
   scales,
   lme4,
   broom.mixed
 )
-
-
-#===============================================================================
-# 02 Settings
-#===============================================================================
-
-# Mindestzahl von Screenshots entsprechend der Präregistrierung
-minimum_screenshots <- 7
-
-# Bei TRUE bricht der Script ab, wenn Pflichtcodes fehlen oder das Coding nicht
-# als abgeschlossen markiert wurde.
-strict_coding_check <- TRUE
-
-# Bei TRUE werden Personen auf die im aufbereiteten Screening-Datensatz
-# enthaltenen Personen beschränkt, sofern die Datei existiert.
-apply_screening_filter <- TRUE
-
-# Nur Gruppen mit mindestens dieser Fallzahl werden in bestimmten explorativen
-# Diagrammen angezeigt. Die vollständigen Tabellen werden dennoch exportiert.
-minimum_group_n_for_figures <- 5
-
-# Anzahl der Topics und konkreten Quellen, die in Ranglisten gezeigt werden
-number_top_topics <- 15
-number_top_sources <- 15
-
-# Explorative Mehrebenenmodelle ausführen
-run_exploratory_models <- TRUE
 
 
 #===============================================================================
@@ -119,798 +95,293 @@ screening_file <- file.path(
 )
 
 output_folder <- "03_Output"
-figure_folder <- "04_Figures"
+base_figure_folder <- "04_Figures"
+coding_folder <- "06_Coding"
 
-output_excel <- file.path(
-  output_folder,
-  "Daily_Results.xlsx"
-)
-
-screenshot_rds <- file.path(
-  output_folder,
-  "daily_screenshot_level.rds"
-)
-
-participant_rds <- file.path(
-  output_folder,
-  "daily_participant_level.rds"
-)
-
-model_rds <- file.path(
-  output_folder,
-  "daily_exploratory_models.rds"
-)
+if (simulate_coding) {
+  output_excel <- file.path(
+    output_folder,
+    "Daily_Results_SIMULATED.xlsx"
+  )
+  
+  output_screenshot_rds <- file.path(
+    output_folder,
+    "daily_screenshot_level_SIMULATED.rds"
+  )
+  
+  output_participant_rds <- file.path(
+    output_folder,
+    "daily_participant_level_SIMULATED.rds"
+  )
+  
+  output_models_rds <- file.path(
+    output_folder,
+    "daily_exploratory_models_SIMULATED.rds"
+  )
+  
+  simulated_coding_file <- file.path(
+    coding_folder,
+    "coding_sheet_simulated.xlsx"
+  )
+  
+  figure_folder <- file.path(
+    base_figure_folder,
+    "Simulated_Daily"
+  )
+  
+} else {
+  output_excel <- file.path(
+    output_folder,
+    "Daily_Results.xlsx"
+  )
+  
+  output_screenshot_rds <- file.path(
+    output_folder,
+    "daily_screenshot_level.rds"
+  )
+  
+  output_participant_rds <- file.path(
+    output_folder,
+    "daily_participant_level.rds"
+  )
+  
+  output_models_rds <- file.path(
+    output_folder,
+    "daily_exploratory_models.rds"
+  )
+  
+  simulated_coding_file <- NA_character_
+  figure_folder <- base_figure_folder
+}
 
 fs::dir_create(output_folder)
 fs::dir_create(figure_folder)
+fs::dir_create(coding_folder)
 
 
 #===============================================================================
-# 04 Helper functions: data cleaning
+# 04 General helper functions
 #===============================================================================
 
 clean_text <- function(x) {
-  
   x <- as.character(x)
-  
+  x <- stringr::str_replace_all(x, "\\u00a0", " ")
   x <- stringr::str_squish(x)
-  
-  x[
-    is.na(x) |
-      stringr::str_to_upper(x) %in% c(
-        "",
-        "-1",
-        "NA",
-        "N/A",
-        "NULL"
-      )
-  ] <- NA_character_
-  
+  x[x %in% c("", "NA", "N/A", "NULL", "-1")] <- NA_character_
   x
 }
 
 
 clean_numeric <- function(x) {
-  
-  x <- suppressWarnings(
+  suppressWarnings(
     as.numeric(
       as.character(x)
     )
   )
-  
-  x[x == -1] <- NA_real_
-  
-  x
+}
+
+
+`%||%` <- function(x, y) {
+  if (is.null(x)) y else x
 }
 
 
 clean_binary <- function(x) {
-  
-  x_clean <- stringr::str_to_lower(
-    stringr::str_squish(
-      as.character(x)
-    )
-  )
-  
-  dplyr::case_when(
-    x_clean %in% c(
-      "true",
-      "t",
-      "1",
-      "yes",
-      "ja",
-      "ausgewählt"
-    ) ~ TRUE,
-    
-    x_clean %in% c(
-      "false",
-      "f",
-      "0",
-      "no",
-      "nein",
-      "nicht ausgewählt"
-    ) ~ FALSE,
-    
-    x_clean %in% c(
-      "",
-      "-1",
-      "na",
-      "n/a",
-      "null",
-      "keine angabe"
-    ) ~ NA,
-    
-    TRUE ~ NA
-  )
-}
-
-
-normalize_platform <- function(x) {
-  
-  x_clean <- stringr::str_to_lower(
+  raw <- stringr::str_to_lower(
     clean_text(x)
   )
   
-  dplyr::case_when(
-    x_clean %in% c(
-      "1",
-      "facebook",
-      "fb"
-    ) ~ "Facebook",
-    
-    x_clean %in% c(
-      "2",
-      "instagram",
-      "insta"
-    ) ~ "Instagram",
-    
-    x_clean %in% c(
-      "3",
-      "tiktok",
-      "tik tok"
-    ) ~ "TikTok",
-    
-    x_clean %in% c(
-      "4",
-      "x",
-      "twitter",
-      "x (vormals twitter)"
-    ) ~ "X",
-    
-    is.na(x_clean) ~ NA_character_,
-    
-    TRUE ~ x
+  numeric_value <- clean_numeric(raw)
+  
+  case_when(
+    raw %in% c("true", "yes", "ja", "j", "completed", "complete") ~ 1L,
+    raw %in% c("false", "no", "nein", "n", "incomplete") ~ 0L,
+    numeric_value == 1 ~ 1L,
+    numeric_value == 0 ~ 0L,
+    numeric_value == -1 ~ NA_integer_,
+    TRUE ~ NA_integer_
   )
 }
 
-
-normalize_format <- function(x) {
-  
-  x_original <- clean_text(x)
-  
-  x_clean <- stringr::str_to_lower(
-    x_original
-  )
-  
-  dplyr::case_when(
-    x_clean %in% c(
-      "text",
-      "textbasiert",
-      "text-based",
-      "text based"
-    ) ~ "Text",
-    
-    x_clean %in% c(
-      "bild",
-      "image",
-      "foto",
-      "photo",
-      "bildbasiert",
-      "image-based"
-    ) ~ "Bild",
-    
-    x_clean %in% c(
-      "video",
-      "videobasiert",
-      "video-based"
-    ) ~ "Video",
-    
-    x_clean %in% c(
-      "mischform",
-      "gemischt",
-      "mixed",
-      "mischform/unklar"
-    ) ~ "Mischform/unklar",
-    
-    is.na(x_clean) ~ NA_character_,
-    
-    TRUE ~ x_original
-  )
-}
-
-
-normalize_incidentality <- function(
-    label,
-    code
-) {
-  
-  code_clean <- clean_numeric(code)
-  
-  label_clean <- stringr::str_to_lower(
-    clean_text(label)
-  )
-  
-  dplyr::case_when(
-    code_clean == 1 ~ "Gezielt gesucht",
-    
-    code_clean == 2 ~
-      "Account gefolgt, Beitrag nicht gezielt gesucht",
-    
-    code_clean == 3 ~ "Zufällig begegnet",
-    
-    stringr::str_detect(
-      label_clean,
-      "gezielt"
-    ) &
-      !stringr::str_detect(
-        label_clean,
-        "nicht gezielt"
-      ) ~ "Gezielt gesucht",
-    
-    stringr::str_detect(
-      label_clean,
-      "account gefolgt|folge dem account"
-    ) ~ "Account gefolgt, Beitrag nicht gezielt gesucht",
-    
-    stringr::str_detect(
-      label_clean,
-      "zufällig"
-    ) ~ "Zufällig begegnet",
-    
-    TRUE ~ NA_character_
-  )
-}
-
-
-normalize_locality <- function(
-    label,
-    code
-) {
-  
-  code_clean <- clean_numeric(code)
-  
-  label_clean <- stringr::str_to_lower(
-    clean_text(label)
-  )
-  
-  dplyr::case_when(
-    code_clean == 1 ~ "Zu Hause",
-    code_clean == 2 ~ "Unterwegs",
-    code_clean == 3 ~ "Weiß nicht mehr",
-    
-    stringr::str_detect(
-      label_clean,
-      "zu hause"
-    ) ~ "Zu Hause",
-    
-    stringr::str_detect(
-      label_clean,
-      "unterwegs"
-    ) ~ "Unterwegs",
-    
-    stringr::str_detect(
-      label_clean,
-      "weiß nicht"
-    ) ~ "Weiß nicht mehr",
-    
-    TRUE ~ NA_character_
-  )
-}
-
-
-normalize_situation <- function(
-    label,
-    code
-) {
-  
-  code_clean <- clean_numeric(code)
-  
-  label_clean <- stringr::str_to_lower(
-    clean_text(label)
-  )
-  
-  dplyr::case_when(
-    code_clean == 1 ~ "Allein",
-    code_clean == 2 ~ "Gemeinsam mit anderen",
-    code_clean == 3 ~ "Weiß nicht mehr",
-    
-    stringr::str_detect(
-      label_clean,
-      "allein"
-    ) ~ "Allein",
-    
-    stringr::str_detect(
-      label_clean,
-      "gemeinsam"
-    ) ~ "Gemeinsam mit anderen",
-    
-    stringr::str_detect(
-      label_clean,
-      "weiß nicht"
-    ) ~ "Weiß nicht mehr",
-    
-    TRUE ~ NA_character_
-  )
-}
-
-
-#===============================================================================
-# 05 Helper functions: descriptive analyses
-#===============================================================================
 
 safe_mean <- function(x) {
-  
-  if (all(is.na(x))) {
-    return(NA_real_)
-  }
-  
-  mean(
-    x,
-    na.rm = TRUE
-  )
+  if (all(is.na(x))) return(NA_real_)
+  mean(x, na.rm = TRUE)
 }
 
 
 safe_sd <- function(x) {
-  
-  if (sum(!is.na(x)) <= 1) {
-    return(NA_real_)
-  }
-  
-  sd(
-    x,
-    na.rm = TRUE
-  )
+  if (sum(!is.na(x)) < 2) return(NA_real_)
+  sd(x, na.rm = TRUE)
 }
 
 
-frequency_summary <- function(
-    data,
-    variable,
-    variable_label
-) {
-  
-  data %>%
-    transmute(
-      Level = as.character(
-        .data[[variable]]
-      )
-    ) %>%
-    mutate(
-      Level = replace_na(
-        Level,
-        "Missing"
-      )
-    ) %>%
-    count(
-      Level,
-      name = "N"
-    ) %>%
-    mutate(
-      Percent = 100 * N / sum(N),
-      Variable = variable_label,
-      Variable_Name = variable
-    ) %>%
-    select(
-      Variable,
-      Variable_Name,
-      Level,
-      N,
-      Percent
-    )
+safe_median <- function(x) {
+  if (all(is.na(x))) return(NA_real_)
+  median(x, na.rm = TRUE)
 }
 
 
-cross_table <- function(
-    data,
-    row_variable,
-    column_variable
-) {
-  
-  data %>%
-    filter(
-      !is.na(.data[[row_variable]]),
-      !is.na(.data[[column_variable]])
-    ) %>%
-    count(
-      Row = .data[[row_variable]],
-      Column = .data[[column_variable]],
-      name = "N"
-    ) %>%
-    group_by(
-      Row
-    ) %>%
-    mutate(
-      Row_Total = sum(N),
-      Row_Percent = 100 * N / Row_Total
-    ) %>%
-    ungroup() %>%
-    group_by(
-      Column
-    ) %>%
-    mutate(
-      Column_Total = sum(N),
-      Column_Percent = 100 * N / Column_Total
-    ) %>%
-    ungroup() %>%
-    mutate(
-      Total_Percent = 100 * N / sum(N),
-      Row_Variable = row_variable,
-      Column_Variable = column_variable,
-      .before = 1
-    )
+safe_min <- function(x) {
+  if (all(is.na(x))) return(NA_real_)
+  min(x, na.rm = TRUE)
 }
 
 
-participant_weighted_category <- function(
-    data,
-    variable,
-    variable_label
-) {
-  
-  participant_ids <- sort(
-    unique(
-      data$participant
-    )
-  )
-  
-  categories <- sort(
-    unique(
-      na.omit(
-        as.character(
-          data[[variable]]
-        )
-      )
-    )
-  )
-  
-  if (length(categories) == 0) {
-    
-    return(
-      tibble(
-        Variable = variable_label,
-        Category = character(),
-        N_Participants = integer(),
-        Mean_Participant_Proportion = numeric(),
-        SD_Participant_Proportion = numeric(),
-        Median_Participant_Proportion = numeric(),
-        Minimum_Participant_Proportion = numeric(),
-        Maximum_Participant_Proportion = numeric()
-      )
-    )
-  }
-  
-  profile <- data %>%
-    transmute(
-      participant,
-      Category = as.character(
-        .data[[variable]]
-      )
-    ) %>%
-    filter(
-      !is.na(Category)
-    ) %>%
-    count(
-      participant,
-      Category,
-      name = "N"
-    ) %>%
-    tidyr::complete(
-      participant = participant_ids,
-      Category = categories,
-      fill = list(
-        N = 0
-      )
-    ) %>%
-    group_by(
-      participant
-    ) %>%
-    mutate(
-      Participant_Total = sum(N),
-      
-      Proportion = if_else(
-        Participant_Total > 0,
-        N / Participant_Total,
-        NA_real_
-      )
-    ) %>%
-    ungroup()
-  
-  profile %>%
-    group_by(
-      Category
-    ) %>%
-    summarise(
-      N_Participants = sum(
-        !is.na(Proportion)
-      ),
-      
-      Mean_Participant_Proportion =
-        mean(
-          Proportion,
-          na.rm = TRUE
-        ),
-      
-      SD_Participant_Proportion =
-        sd(
-          Proportion,
-          na.rm = TRUE
-        ),
-      
-      Median_Participant_Proportion =
-        median(
-          Proportion,
-          na.rm = TRUE
-        ),
-      
-      Minimum_Participant_Proportion =
-        min(
-          Proportion,
-          na.rm = TRUE
-        ),
-      
-      Maximum_Participant_Proportion =
-        max(
-          Proportion,
-          na.rm = TRUE
-        ),
-      
-      .groups = "drop"
-    ) %>%
-    mutate(
-      Variable = variable_label,
-      .before = 1
-    )
+safe_max <- function(x) {
+  if (all(is.na(x))) return(NA_real_)
+  max(x, na.rm = TRUE)
 }
 
 
-participant_weighted_binary <- function(
-    data,
-    variable,
-    variable_label
-) {
-  
-  person_proportions <- data %>%
-    group_by(
-      participant
-    ) %>%
-    summarise(
-      N_Valid = sum(
-        !is.na(
-          .data[[variable]]
-        )
-      ),
-      
-      Proportion = safe_mean(
-        .data[[variable]]
-      ),
-      
-      .groups = "drop"
-    )
-  
-  tibble(
-    Variable = variable_label,
-    
-    N_Participants = sum(
-      !is.na(
-        person_proportions$Proportion
-      )
-    ),
-    
-    Mean_Participant_Proportion =
-      mean(
-        person_proportions$Proportion,
-        na.rm = TRUE
-      ),
-    
-    SD_Participant_Proportion =
-      sd(
-        person_proportions$Proportion,
-        na.rm = TRUE
-      ),
-    
-    Median_Participant_Proportion =
-      median(
-        person_proportions$Proportion,
-        na.rm = TRUE
-      ),
-    
-    Minimum_Participant_Proportion =
-      min(
-        person_proportions$Proportion,
-        na.rm = TRUE
-      ),
-    
-    Maximum_Participant_Proportion =
-      max(
-        person_proportions$Proportion,
-        na.rm = TRUE
-      )
-  )
-}
-
-
-group_interaction_rates <- function(
-    data,
-    group_variable
-) {
-  
-  data %>%
-    transmute(
-      Group = .data[[group_variable]],
-      
-      `Gründlich gelesen/angeschaut` =
-        interaction_read,
-      
-      `Weiter informiert` =
-        interaction_research,
-      
-      `Sichtbar interagiert` =
-        interaction_engagement
-    ) %>%
-    filter(
-      !is.na(Group)
-    ) %>%
-    pivot_longer(
-      cols = c(
-        `Gründlich gelesen/angeschaut`,
-        `Weiter informiert`,
-        `Sichtbar interagiert`
-      ),
-      names_to = "Practice",
-      values_to = "Selected"
-    ) %>%
-    group_by(
-      Group,
-      Practice
-    ) %>%
-    summarise(
-      N_Valid = sum(
-        !is.na(Selected)
-      ),
-      
-      N_Selected = sum(
-        Selected,
-        na.rm = TRUE
-      ),
-      
-      Percent_Selected =
-        100 * N_Selected / N_Valid,
-      
-      .groups = "drop"
-    ) %>%
-    mutate(
-      Group_Variable = group_variable,
-      .before = 1
-    )
-}
-
-
-#===============================================================================
-# 06 Helper functions: diversity
-#===============================================================================
-
-calculate_diversity <- function(x) {
-  
-  x <- x[
-    !is.na(x)
-  ]
-  
-  if (length(x) == 0) {
-    
-    return(
-      tibble(
-        Richness = NA_real_,
-        Shannon = NA_real_,
-        Evenness = NA_real_,
-        Dominant_Category_Share = NA_real_
-      )
-    )
-  }
-  
-  probabilities <- prop.table(
-    table(x)
-  )
-  
-  richness <- length(
-    probabilities
-  )
-  
-  shannon <- -sum(
-    probabilities *
-      log(probabilities)
-  )
-  
-  evenness <- if (
-    richness > 1
-  ) {
-    shannon / log(richness)
-  } else {
-    0
-  }
-  
-  tibble(
-    Richness = richness,
-    Shannon = shannon,
-    Evenness = evenness,
-    Dominant_Category_Share = max(
-      probabilities
-    )
-  )
-}
-
-
-diversity_by_participant <- function(
-    data,
-    variable,
-    prefix
-) {
-  
-  result <- data %>%
-    group_by(
-      participant
-    ) %>%
-    group_modify(
-      ~ calculate_diversity(
-        .x[[variable]]
-      )
-    ) %>%
-    ungroup()
-  
-  names(result)[
-    names(result) != "participant"
-  ] <- paste0(
-    prefix,
-    "_",
-    names(result)[
-      names(result) != "participant"
-    ]
-  )
-  
+safe_divide <- function(numerator, denominator) {
+  result <- numerator / denominator
+  result[is.na(denominator) | denominator == 0] <- NA_real_
   result
 }
 
 
-#===============================================================================
-# 07 Helper functions: quality checks
-#===============================================================================
+safe_percent <- function(numerator, denominator) {
+  100 * safe_divide(numerator, denominator)
+}
 
-category_variant_check <- function(
-    data,
-    variable
-) {
+
+safe_z <- function(x) {
+  x <- clean_numeric(x)
   
-  data %>%
-    transmute(
-      Original = clean_text(
-        .data[[variable]]
-      )
-    ) %>%
-    filter(
-      !is.na(Original)
-    ) %>%
-    mutate(
-      Normalized = stringr::str_to_lower(
-        stringr::str_squish(
-          Original
-        )
-      )
-    ) %>%
-    group_by(
-      Normalized
-    ) %>%
-    summarise(
-      N = n(),
-      
-      Number_of_Variants = n_distinct(
-        Original
-      ),
-      
-      Variants = paste(
-        sort(
-          unique(Original)
-        ),
-        collapse = " | "
-      ),
-      
-      .groups = "drop"
-    ) %>%
-    filter(
-      Number_of_Variants > 1
-    ) %>%
-    arrange(
-      desc(N)
+  if (all(is.na(x))) {
+    return(rep(NA_real_, length(x)))
+  }
+  
+  if (sum(!is.na(x)) < 2 || isTRUE(all.equal(sd(x, na.rm = TRUE), 0))) {
+    return(if_else(is.na(x), NA_real_, 0))
+  }
+  
+  as.numeric(scale(x))
+}
+
+
+share_true <- function(x) {
+  if (all(is.na(x))) return(NA_real_)
+  mean(x %in% TRUE, na.rm = TRUE)
+}
+
+
+share_value <- function(x, value) {
+  valid <- !is.na(x)
+  if (!any(valid)) return(NA_real_)
+  mean(x[valid] == value)
+}
+
+
+n_distinct_valid <- function(x) {
+  dplyr::n_distinct(x[!is.na(x)])
+}
+
+
+shannon_entropy <- function(x) {
+  
+  x <- x[!is.na(x)]
+  
+  if (length(x) == 0) {
+    return(NA_real_)
+  }
+  
+  counts <- table(x, useNA = "no")
+  
+  # Nicht beobachtete Faktorstufen entfernen
+  counts <- counts[counts > 0]
+  
+  probabilities <- counts / sum(counts)
+  
+  -sum(
+    probabilities * log(probabilities)
+  )
+}
+
+
+shannon_evenness <- function(x) {
+  richness <- n_distinct_valid(x)
+  if (richness == 0) return(NA_real_)
+  if (richness == 1) return(0)
+  shannon_entropy(x) / log(richness)
+}
+
+
+dominant_share <- function(x) {
+  x <- x[!is.na(x)]
+  if (length(x) == 0) return(NA_real_)
+  max(prop.table(table(x)))
+}
+
+
+profile_alignment <- function(screening_values, observed_values) {
+  complete <- complete.cases(screening_values, observed_values)
+  
+  if (
+    sum(complete) < 3 ||
+    n_distinct(screening_values[complete]) < 2 ||
+    n_distinct(observed_values[complete]) < 2
+  ) {
+    return(NA_real_)
+  }
+  
+  suppressWarnings(
+    cor(
+      screening_values[complete],
+      observed_values[complete],
+      method = "spearman"
     )
+  )
+}
+
+
+parse_study_day <- function(x) {
+  numeric_direct <- clean_numeric(x)
+  
+  extracted <- suppressWarnings(
+    as.numeric(
+      stringr::str_extract(
+        as.character(x),
+        "[0-9]+"
+      )
+    )
+  )
+  
+  dplyr::coalesce(
+    numeric_direct,
+    extracted
+  )
+}
+
+
+rename_first_available <- function(
+    data,
+    target,
+    candidates,
+    required = FALSE
+) {
+  if (target %in% names(data)) return(data)
+  
+  available <- intersect(
+    candidates,
+    names(data)
+  )
+  
+  if (length(available) > 0) {
+    names(data)[names(data) == available[[1]]] <- target
+  } else if (required) {
+    stop(
+      "Benötigte Variable '",
+      target,
+      "' wurde nicht gefunden. Geprüfte Alternativen: ",
+      paste(candidates, collapse = ", ")
+    )
+  } else {
+    data[[target]] <- NA
+  }
+  
+  data
 }
 
 
@@ -920,58 +391,2651 @@ add_excel_sheet <- function(
     data,
     header_style
 ) {
+  sheet_name <- stringr::str_sub(sheet_name, 1, 31)
   
-  sheet_name <- stringr::str_sub(
-    sheet_name,
-    1,
-    31
-  )
+  if (sheet_name %in% names(workbook)) {
+    stop("Doppelter Excel-Blattname: ", sheet_name)
+  }
+  
+  if (is.null(data)) {
+    data <- tibble(Note = "Object is NULL")
+  }
+  
+  if (!is.data.frame(data)) {
+    data <- as.data.frame(data)
+  }
+  
+  if (ncol(data) == 0) {
+    data <- tibble(Note = "No columns available")
+  }
   
   openxlsx::addWorksheet(
     workbook,
-    sheetName = sheet_name
+    sheet_name
   )
   
   openxlsx::writeData(
     workbook,
-    sheet = sheet_name,
-    x = data,
-    withFilter = TRUE
+    sheet_name,
+    data,
+    headerStyle = header_style,
+    withFilter = nrow(data) > 0
   )
   
-  if (ncol(data) > 0) {
-    
-    openxlsx::addStyle(
-      workbook,
-      sheet = sheet_name,
-      style = header_style,
-      rows = 1,
-      cols = seq_len(
-        ncol(data)
-      ),
-      gridExpand = TRUE
+  openxlsx::freezePane(
+    workbook,
+    sheet_name,
+    firstRow = TRUE
+  )
+  
+  openxlsx::setColWidths(
+    workbook,
+    sheet_name,
+    cols = seq_len(ncol(data)),
+    widths = "auto"
+  )
+}
+
+
+frequency_distribution <- function(
+    data,
+    variable,
+    variable_label,
+    categories = NULL
+) {
+  raw_values <- clean_text(data[[variable]])
+  
+  if (is.null(categories)) {
+    categories <- sort(unique(raw_values[!is.na(raw_values)]))
+  }
+  
+  n_total <- length(raw_values)
+  n_valid <- sum(!is.na(raw_values))
+  
+  valid_counts <- tibble(Category = raw_values) %>%
+    filter(!is.na(Category)) %>%
+    count(Category, name = "N") %>%
+    tidyr::complete(
+      Category = categories,
+      fill = list(N = 0)
     )
-    
-    openxlsx::freezePane(
-      workbook,
-      sheet = sheet_name,
-      firstRow = TRUE
-    )
-    
-    openxlsx::setColWidths(
-      workbook,
-      sheet = sheet_name,
-      cols = seq_len(
-        ncol(data)
+  
+  missing_count <- tibble(
+    Category = "Missing",
+    N = sum(is.na(raw_values))
+  )
+  
+  bind_rows(
+    valid_counts,
+    missing_count
+  ) %>%
+    mutate(
+      Variable = variable_label,
+      N_Total = n_total,
+      N_Valid = n_valid,
+      Percent_Total = safe_percent(N, n_total),
+      Percent_Valid = if_else(
+        Category == "Missing",
+        NA_real_,
+        safe_percent(N, n_valid)
       ),
-      widths = "auto"
+      .before = 1
+    )
+}
+
+
+make_participant_shares <- function(
+    data,
+    variable,
+    categories,
+    variable_label
+) {
+  participant_ids <- sort(unique(data$participant))
+  
+  counts <- data %>%
+    transmute(
+      participant,
+      Category = clean_text(.data[[variable]])
+    ) %>%
+    filter(!is.na(Category)) %>%
+    count(
+      participant,
+      Category,
+      name = "N"
+    )
+  
+  denominators <- data %>%
+    transmute(
+      participant,
+      Value = clean_text(.data[[variable]])
+    ) %>%
+    group_by(participant) %>%
+    summarise(
+      Denominator = sum(!is.na(Value)),
+      .groups = "drop"
+    )
+  
+  tidyr::expand_grid(
+    participant = participant_ids,
+    Category = categories
+  ) %>%
+    left_join(
+      counts,
+      by = c("participant", "Category")
+    ) %>%
+    left_join(
+      denominators,
+      by = "participant"
+    ) %>%
+    mutate(
+      N = replace_na(N, 0L),
+      Share = safe_divide(N, Denominator),
+      Variable = variable_label,
+      .before = 1
+    )
+}
+
+
+summarise_participant_shares <- function(participant_shares) {
+  participant_shares %>%
+    group_by(
+      Variable,
+      Category
+    ) %>%
+    summarise(
+      N_Participants = sum(!is.na(Share)),
+      Mean_Share = safe_mean(Share),
+      SD_Share = safe_sd(Share),
+      Median_Share = safe_median(Share),
+      Minimum_Share = safe_min(Share),
+      Maximum_Share = safe_max(Share),
+      Mean_Percent = 100 * Mean_Share,
+      .groups = "drop"
+    )
+}
+
+
+cross_tabulation <- function(
+    data,
+    row_variable,
+    column_variable,
+    row_label,
+    column_label
+) {
+  data %>%
+    transmute(
+      Row = clean_text(.data[[row_variable]]),
+      Column = clean_text(.data[[column_variable]])
+    ) %>%
+    filter(
+      !is.na(Row),
+      !is.na(Column)
+    ) %>%
+    count(
+      Row,
+      Column,
+      name = "N"
+    ) %>%
+    group_by(Row) %>%
+    mutate(
+      Row_Percent = 100 * N / sum(N)
+    ) %>%
+    ungroup() %>%
+    group_by(Column) %>%
+    mutate(
+      Column_Percent = 100 * N / sum(N)
+    ) %>%
+    ungroup() %>%
+    mutate(
+      Total_Percent = 100 * N / sum(N),
+      Row_Variable = row_label,
+      Column_Variable = column_label,
+      .before = 1
+    )
+}
+
+
+binary_group_summary <- function(
+    data,
+    group_variable,
+    outcome_variable,
+    group_label,
+    outcome_label
+) {
+  data %>%
+    transmute(
+      Group = clean_text(.data[[group_variable]]),
+      Outcome = clean_binary(.data[[outcome_variable]])
+    ) %>%
+    filter(!is.na(Group)) %>%
+    group_by(Group) %>%
+    summarise(
+      N_Valid = sum(!is.na(Outcome)),
+      N_Yes = sum(Outcome == 1, na.rm = TRUE),
+      Percent_Yes = safe_percent(N_Yes, N_Valid),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      Grouping_Variable = group_label,
+      Outcome = outcome_label,
+      .before = 1
+    )
+}
+
+
+spearman_test <- function(
+    data,
+    x_variable,
+    y_variable,
+    x_label = x_variable,
+    y_label = y_variable
+) {
+  test_data <- data %>%
+    transmute(
+      x = clean_numeric(.data[[x_variable]]),
+      y = clean_numeric(.data[[y_variable]])
+    ) %>%
+    drop_na()
+  
+  if (
+    nrow(test_data) < 3 ||
+    n_distinct(test_data$x) < 2 ||
+    n_distinct(test_data$y) < 2
+  ) {
+    return(
+      tibble(
+        Variable_1 = x_label,
+        Variable_2 = y_label,
+        N = nrow(test_data),
+        Spearman_Rho = NA_real_,
+        P_Value = NA_real_
+      )
     )
   }
+  
+  result <- suppressWarnings(
+    cor.test(
+      test_data$x,
+      test_data$y,
+      method = "spearman",
+      exact = FALSE
+    )
+  )
+  
+  tibble(
+    Variable_1 = x_label,
+    Variable_2 = y_label,
+    N = nrow(test_data),
+    Spearman_Rho = unname(result$estimate),
+    P_Value = result$p.value
+  )
 }
 
 
 #===============================================================================
-# 08 Visual design
+# 05 Canonical category systems
+#===============================================================================
+
+topic_levels <- c(
+  "Politik, Staat & Wahlen",
+  "Internationales, Krieg & Sicherheit",
+  "Wirtschaft, Arbeit, Finanzen & Verbraucher",
+  "Gesellschaft, Soziales, Migration & Religion",
+  "Bildung, Wissenschaft & Technologie",
+  "Gesundheit & Pflege",
+  "Klima, Umwelt & Energie",
+  "Kriminalität & Justiz",
+  "Verkehr, Infrastruktur & Wohnen",
+  "Wetter & Naturereignisse",
+  "Kultur, Medien & Unterhaltung",
+  "Geschichte & Erinnerung",
+  "Sport",
+  "Veranstaltungen & öffentlicher Service",
+  "Sonstiges / nicht eindeutig"
+)
+
+
+source_levels <- c(
+  "Journalistisches Medium",
+  "Alternatives oder parteiisches Medienangebot",
+  "Partei oder Politiker:in",
+  "Staatliche oder öffentliche Institution",
+  "NGO, Verband, Verein, Initiative oder Bewegung",
+  "Wissenschaft, Expert:in oder Faktencheck",
+  "Unternehmen oder Marke",
+  "Journalist:in, Creator, Influencer:in oder öffentliche Person",
+  "Private Person / Peer",
+  "Kollektiv, Meme-, Satire- oder Aggregator-Seite",
+  "Sonstige / Quelle nicht erkennbar"
+)
+
+
+format_levels <- c(
+  "Textbasiert",
+  "Bildbasiert",
+  "Videobasiert",
+  "Mischform / nicht eindeutig"
+)
+
+
+platform_levels <- c(
+  "Facebook",
+  "Instagram",
+  "TikTok",
+  "X"
+)
+
+
+incidentality_levels <- c(
+  "Gezielt gesucht",
+  "Gefolgt, nicht gezielt gesucht",
+  "Zufällig begegnet"
+)
+
+
+locality_levels <- c(
+  "Zu Hause",
+  "Unterwegs",
+  "Weiß nicht"
+)
+
+
+situation_levels <- c(
+  "Allein",
+  "Gemeinsam mit jemandem",
+  "Weiß nicht"
+)
+
+
+canonicalise_platform <- function(x) {
+  x_clean <- stringr::str_to_lower(clean_text(x))
+  x_numeric <- clean_numeric(x_clean)
+  
+  case_when(
+    x_numeric == 1 ~ "Facebook",
+    x_numeric == 2 ~ "Instagram",
+    x_numeric == 3 ~ "TikTok",
+    x_numeric == 4 ~ "X",
+    str_detect(x_clean, "facebook|fb") ~ "Facebook",
+    str_detect(x_clean, "instagram|insta") ~ "Instagram",
+    str_detect(x_clean, "tiktok|tik tok") ~ "TikTok",
+    str_detect(x_clean, "twitter|^x$|x \\(vormals") ~ "X",
+    TRUE ~ NA_character_
+  )
+}
+
+
+canonicalise_incidentality <- function(x) {
+  x_clean <- stringr::str_to_lower(clean_text(x))
+  x_numeric <- clean_numeric(x_clean)
+  
+  case_when(
+    x_numeric == 1 ~ "Gezielt gesucht",
+    x_numeric == 2 ~ "Gefolgt, nicht gezielt gesucht",
+    x_numeric == 3 ~ "Zufällig begegnet",
+    str_detect(x_clean, "gezielt|deliberately|intention") ~ "Gezielt gesucht",
+    str_detect(x_clean, "folge|follow") ~ "Gefolgt, nicht gezielt gesucht",
+    str_detect(x_clean, "zufällig|chance|random") ~ "Zufällig begegnet",
+    TRUE ~ NA_character_
+  )
+}
+
+
+canonicalise_locality <- function(x) {
+  x_clean <- stringr::str_to_lower(clean_text(x))
+  x_numeric <- clean_numeric(x_clean)
+  
+  case_when(
+    x_numeric == 1 ~ "Zu Hause",
+    x_numeric == 2 ~ "Unterwegs",
+    x_numeric == 3 ~ "Weiß nicht",
+    str_detect(x_clean, "hause|home") ~ "Zu Hause",
+    str_detect(x_clean, "unterwegs|out and about|transport|café|park") ~ "Unterwegs",
+    str_detect(x_clean, "weiß nicht|weiss nicht|don't know|dont know") ~ "Weiß nicht",
+    TRUE ~ NA_character_
+  )
+}
+
+
+canonicalise_situation <- function(x) {
+  x_clean <- stringr::str_to_lower(clean_text(x))
+  x_numeric <- clean_numeric(x_clean)
+  
+  case_when(
+    x_numeric == 1 ~ "Allein",
+    x_numeric == 2 ~ "Gemeinsam mit jemandem",
+    x_numeric == 3 ~ "Weiß nicht",
+    str_detect(x_clean, "allein|alone") ~ "Allein",
+    str_detect(x_clean, "gemeinsam|together|jemand") ~ "Gemeinsam mit jemandem",
+    str_detect(x_clean, "weiß nicht|weiss nicht|don't know|dont know") ~ "Weiß nicht",
+    TRUE ~ NA_character_
+  )
+}
+
+
+canonicalise_topic <- function(x) {
+  x <- clean_text(x)
+  
+  dplyr::recode(
+    x,
+    "Politik & Regieren" = "Politik, Staat & Wahlen",
+    "Internationales, Krieg & Sicherheit" = "Internationales, Krieg & Sicherheit",
+    "Wirtschaft, Arbeit & Verbraucher" = "Wirtschaft, Arbeit, Finanzen & Verbraucher",
+    "Soziales, Bildung & Wissenschaft" = "Gesellschaft, Soziales, Migration & Religion",
+    "Gesundheit & Medizin" = "Gesundheit & Pflege",
+    "Kriminalität, Justiz & Polizei" = "Kriminalität & Justiz",
+    "Unterhaltung & Prominenz" = "Kultur, Medien & Unterhaltung",
+    "Lifestyle, Alltag & Service" = "Veranstaltungen & öffentlicher Service",
+    "Sonstiges / unklar" = "Sonstiges / nicht eindeutig",
+    .default = x
+  )
+}
+
+
+canonicalise_source <- function(x) {
+  x <- clean_text(x)
+  
+  dplyr::recode(
+    x,
+    "Journalistische Medien" = "Journalistisches Medium",
+    "Alternative / partizipative News" = "Alternatives oder parteiisches Medienangebot",
+    "Partei / Politiker:in" = "Partei oder Politiker:in",
+    "Staat / öffentliche Institution" = "Staatliche oder öffentliche Institution",
+    "NGO / Initiative / Bewegung" = "NGO, Verband, Verein, Initiative oder Bewegung",
+    "Wissenschaft / Expertise" = "Wissenschaft, Expert:in oder Faktencheck",
+    "Unternehmen / Marke" = "Unternehmen oder Marke",
+    "Creator / Influencer:in" = "Journalist:in, Creator, Influencer:in oder öffentliche Person",
+    "Privatperson / Peer" = "Private Person / Peer",
+    "Kollektiv / anonym / Meme-Aggregator" = "Kollektiv, Meme-, Satire- oder Aggregator-Seite",
+    "Unklar / nicht sichtbar" = "Sonstige / Quelle nicht erkennbar",
+    .default = x
+  )
+}
+
+
+canonicalise_format <- function(x) {
+  x_clean <- stringr::str_to_lower(clean_text(x))
+  
+  case_when(
+    x_clean %in% c("text", "textbasiert", "text-based") ~ "Textbasiert",
+    x_clean %in% c("bild", "bildbasiert", "image", "image-based", "foto") ~ "Bildbasiert",
+    x_clean %in% c("video", "videobasiert", "video-based", "reel", "tiktok") ~ "Videobasiert",
+    str_detect(x_clean, "misch|gemischt|mixed|nicht eindeutig|unklar") ~
+      "Mischform / nicht eindeutig",
+    TRUE ~ clean_text(x)
+  )
+}
+
+
+#===============================================================================
+# 06 Load and prepare screening data
+#===============================================================================
+
+if (!file.exists(screening_file)) {
+  stop(
+    "Die vorbereitete Screening-Datei wurde nicht gefunden: ",
+    screening_file,
+    "\nBitte zuerst 04a_Screening_Analysis.R ausführen."
+  )
+}
+
+screening <- readRDS(screening_file) %>%
+  janitor::clean_names()
+
+screening <- rename_first_available(
+  screening,
+  target = "participant",
+  candidates = c(
+    "personal_participant_code",
+    "personalparticipantcode"
+  ),
+  required = TRUE
+)
+
+screening <- screening %>%
+  mutate(
+    participant = clean_text(participant)
+  ) %>%
+  filter(!is.na(participant))
+
+screening_duplicates <- screening %>%
+  count(participant, name = "N_Rows") %>%
+  filter(N_Rows > 1)
+
+if (nrow(screening_duplicates) > 0) {
+  stop(
+    "Die vorbereitete Screening-Datei enthält doppelte Participant Codes. ",
+    "Bitte diese in 04a bereinigen."
+  )
+}
+
+# Ensure all variables needed for the cross-survey exploration exist.
+screening_optional_variables <- c(
+  "intro_age_num",
+  "gender",
+  "education_three_level",
+  "age_group",
+  "intro_intensity",
+  "intro_ib_undirected",
+  "intro_ib_thematic",
+  "intro_ib_social",
+  "intro_ib_problem",
+  "incidentality_index",
+  "context_local",
+  "context_social",
+  "intro_freq_facebook",
+  "intro_freq_instagram",
+  "intro_freq_tiktok",
+  "intro_freq_x",
+  "n_platforms_used",
+  "n_platforms_weekly",
+  "platform_repertoire",
+  "primary_platform",
+  "dominant_information_need"
+)
+
+for (variable_name in screening_optional_variables) {
+  if (!variable_name %in% names(screening)) {
+    screening[[variable_name]] <- NA
+  }
+}
+
+# Reconstruct a few labels if an older screening_prepared.rds is used.
+if (all(is.na(screening$gender)) && "intro_gender" %in% names(screening)) {
+  screening <- screening %>%
+    mutate(
+      gender = factor(
+        clean_numeric(intro_gender),
+        levels = c(1, 2, 3),
+        labels = c("Weiblich", "Männlich", "Divers")
+      )
+    )
+}
+
+if (
+  all(is.na(screening$education_three_level)) &&
+  "intro_education" %in% names(screening)
+) {
+  screening <- screening %>%
+    mutate(
+      education_three_level = case_when(
+        clean_numeric(intro_education) %in% c(1, 2) ~ "Niedrig",
+        clean_numeric(intro_education) %in% c(3, 4) ~ "Mittel",
+        clean_numeric(intro_education) %in% c(5, 6, 7) ~ "Hoch",
+        TRUE ~ NA_character_
+      )
+    )
+}
+
+if (all(is.na(screening$age_group))) {
+  screening <- screening %>%
+    mutate(
+      age_group = cut(
+        clean_numeric(intro_age_num),
+        breaks = c(59, 64, 69, 74, Inf),
+        labels = c(
+          "60–64 Jahre",
+          "65–69 Jahre",
+          "70–74 Jahre",
+          "75 Jahre und älter"
+        ),
+        ordered_result = TRUE
+      )
+    )
+}
+
+
+#===============================================================================
+# 07 Load and standardise coding sheet
+#===============================================================================
+
+if (!file.exists(coding_file)) {
+  stop(
+    "Das Coding Sheet wurde nicht gefunden: ",
+    coding_file
+  )
+}
+
+available_sheets <- openxlsx::getSheetNames(coding_file)
+
+if (!coding_sheet_name %in% available_sheets) {
+  stop(
+    "Das Tabellenblatt '",
+    coding_sheet_name,
+    "' wurde nicht gefunden. Vorhanden: ",
+    paste(available_sheets, collapse = ", ")
+  )
+}
+
+coding_raw <- openxlsx::read.xlsx(
+  coding_file,
+  sheet = coding_sheet_name,
+  detectDates = TRUE,
+  check.names = FALSE
+) %>%
+  janitor::clean_names()
+
+coding <- coding_raw
+
+alias_definitions <- list(
+  participant = c(
+    "personal_participant_code",
+    "personalparticipantcode"
+  ),
+  screenshot_id = c(
+    "screenshotid",
+    "screenshot_id_system"
+  ),
+  study_day = c(
+    "day",
+    "tag",
+    "studyday"
+  ),
+  photo = c(
+    "photo_number",
+    "screenshot_number",
+    "slot"
+  ),
+  filename = c(
+    "file_name",
+    "original_filename"
+  ),
+  filepath = c(
+    "file_path",
+    "path"
+  ),
+  file_exists = c(
+    "exists",
+    "file_found"
+  ),
+  topic_coded = c(
+    "topic_primary",
+    "topic_code"
+  ),
+  source_coded = c(
+    "source_type",
+    "source_code"
+  ),
+  source_name_coded = c(
+    "account_name_raw",
+    "source_name",
+    "account_name_coded"
+  ),
+  platform_coded = c(
+    "platform_code_coded"
+  ),
+  media_format = c(
+    "format_coded",
+    "format"
+  ),
+  coding_completed = c(
+    "coding_complete",
+    "completed"
+  ),
+  coder = c(
+    "coded_by"
+  ),
+  coding_date = c(
+    "date_coded"
+  ),
+  topic_participant = c(
+    "topic_reported",
+    "topic_raw"
+  ),
+  account_participant = c(
+    "account_reported",
+    "account_raw"
+  ),
+  platform_reported = c(
+    "platform_label",
+    "incident_platform",
+    "platform"
+  ),
+  incidentality_label = c(
+    "incidentality_reported",
+    "incidentality"
+  ),
+  interaction_read = c(
+    "int_read",
+    "interaction_1"
+  ),
+  interaction_research = c(
+    "int_research",
+    "interaction_2"
+  ),
+  interaction_engagement = c(
+    "int_engage",
+    "interaction_3"
+  ),
+  locality_label = c(
+    "local_context",
+    "locality"
+  ),
+  situation_label = c(
+    "social_context",
+    "situation"
+  ),
+  scheduled = c(
+    "scheduled_date"
+  ),
+  committed = c(
+    "committed_date"
+  ),
+  submission_row = c(
+    "source_row"
+  )
+)
+
+for (target_name in names(alias_definitions)) {
+  coding <- rename_first_available(
+    coding,
+    target = target_name,
+    candidates = alias_definitions[[target_name]],
+    required = target_name == "participant"
+  )
+}
+
+coding <- coding %>%
+  mutate(
+    original_coding_row = row_number(),
+    participant = clean_text(participant),
+    screenshot_id = clean_text(screenshot_id),
+    filename = clean_text(filename),
+    filepath = clean_text(filepath),
+    study_day = parse_study_day(study_day),
+    photo = clean_numeric(photo),
+    topic_coded = canonicalise_topic(topic_coded),
+    source_coded = canonicalise_source(source_coded),
+    source_name_coded = clean_text(source_name_coded),
+    platform_reported = canonicalise_platform(platform_reported),
+    platform_coded = canonicalise_platform(platform_coded),
+    media_format = canonicalise_format(media_format),
+    incidentality = canonicalise_incidentality(incidentality_label),
+    interaction_read = clean_binary(interaction_read),
+    interaction_research = clean_binary(interaction_research),
+    interaction_engagement = clean_binary(interaction_engagement),
+    locality = canonicalise_locality(locality_label),
+    situation = canonicalise_situation(situation_label),
+    coding_completed_binary = clean_binary(coding_completed),
+    file_exists_binary = clean_binary(file_exists)
+  ) %>%
+  filter(
+    !is.na(participant),
+    !is.na(filename) | !is.na(screenshot_id)
+  )
+
+# Fill study day from scheduled date if required.
+if (any(is.na(coding$study_day)) && any(!is.na(coding$scheduled))) {
+  coding <- coding %>%
+    mutate(
+      scheduled_date = suppressWarnings(as.Date(scheduled))
+    ) %>%
+    group_by(participant) %>%
+    mutate(
+      inferred_study_day = if_else(
+        !is.na(scheduled_date),
+        as.numeric(scheduled_date - min(scheduled_date, na.rm = TRUE)) + 1,
+        NA_real_
+      ),
+      study_day = coalesce(study_day, inferred_study_day)
+    ) %>%
+    ungroup() %>%
+    select(-inferred_study_day)
+}
+
+# Generate stable screenshot IDs where the sheet does not provide one.
+coding <- coding %>%
+  group_by(
+    participant,
+    study_day
+  ) %>%
+  arrange(
+    original_coding_row,
+    .by_group = TRUE
+  ) %>%
+  mutate(
+    photo_within_day = row_number(),
+    screenshot_id = coalesce(
+      screenshot_id,
+      paste0(
+        participant,
+        "_d",
+        stringr::str_pad(
+          replace_na(as.integer(study_day), 0L),
+          width = 2,
+          pad = "0"
+        ),
+        "_p",
+        stringr::str_pad(
+          photo_within_day,
+          width = 2,
+          pad = "0"
+        )
+      )
+    )
+  ) %>%
+  ungroup()
+
+# The diary-reported platform is the default when no manual platform validation
+# was entered. The three genuinely manual content variables remain topic, source
+# and format.
+coding <- coding %>%
+  mutate(
+    platform_coded = coalesce(
+      platform_coded,
+      platform_reported
+    )
+  )
+
+
+#===============================================================================
+# 08 Optional simulated coding
+#===============================================================================
+
+source_name_examples <- list(
+  "Journalistisches Medium" = c(
+    "Tagesschau",
+    "ZDFheute",
+    "Süddeutsche Zeitung",
+    "Frankfurter Rundschau",
+    "MDR Aktuell"
+  ),
+  "Alternatives oder parteiisches Medienangebot" = c(
+    "Alternative Nachrichten",
+    "Politik Direkt",
+    "Freie Stimme"
+  ),
+  "Partei oder Politiker:in" = c(
+    "Bundestagsfraktion",
+    "Kommunalpolitikerin",
+    "Bundespolitiker"
+  ),
+  "Staatliche oder öffentliche Institution" = c(
+    "Bundesregierung",
+    "Stadtverwaltung",
+    "Polizei",
+    "Bundeszentrale für politische Bildung"
+  ),
+  "NGO, Verband, Verein, Initiative oder Bewegung" = c(
+    "Verbraucherzentrale",
+    "NABU",
+    "Sozialverband",
+    "Lokale Initiative"
+  ),
+  "Wissenschaft, Expert:in oder Faktencheck" = c(
+    "Universität",
+    "Forschungsinstitut",
+    "Correctiv Faktencheck",
+    "Wissenschaftlerin"
+  ),
+  "Unternehmen oder Marke" = c(
+    "Deutsche Bahn",
+    "Energieversorger",
+    "Technologieunternehmen",
+    "Einzelhandel"
+  ),
+  "Journalist:in, Creator, Influencer:in oder öffentliche Person" = c(
+    "Journalistin",
+    "Wissenscreator",
+    "Kulturcreator",
+    "Öffentliche Person"
+  ),
+  "Private Person / Peer" = c(
+    "Privater Account",
+    "Bekannte Person",
+    "Familienkontakt"
+  ),
+  "Kollektiv, Meme-, Satire- oder Aggregator-Seite" = c(
+    "Satireseite",
+    "Meme-Aggregator",
+    "Lokaler Sammelaccount"
+  ),
+  "Sonstige / Quelle nicht erkennbar" = c(
+    "Quelle nicht erkennbar"
+  )
+)
+
+
+simulate_manual_coding <- function(
+    coding_data,
+    screening_data,
+    seed,
+    overwrite_existing = FALSE,
+    use_screening_patterns = TRUE
+) {
+  set.seed(seed)
+  
+  simulation_screening <- screening_data %>%
+    select(
+      participant,
+      any_of(
+        c(
+          "intro_ib_undirected",
+          "intro_ib_thematic",
+          "intro_ib_social",
+          "intro_ib_problem"
+        )
+      )
+    )
+  
+  simulation_data <- coding_data %>%
+    left_join(
+      simulation_screening,
+      by = "participant"
+    )
+  
+  n_rows <- nrow(simulation_data)
+  
+  simulated_topic <- character(n_rows)
+  simulated_source <- character(n_rows)
+  simulated_source_name <- character(n_rows)
+  simulated_format <- character(n_rows)
+  simulated_platform <- character(n_rows)
+  
+  base_topic_weights <- c(
+    0.12, 0.08, 0.08, 0.09, 0.07,
+    0.08, 0.06, 0.06, 0.06, 0.06,
+    0.09, 0.05, 0.06, 0.08, 0.06
+  )
+  
+  base_source_weights <- c(
+    0.28, 0.07, 0.08, 0.09, 0.08,
+    0.07, 0.10, 0.11, 0.05, 0.04, 0.03
+  )
+  
+  for (row_index in seq_len(n_rows)) {
+    reported_platform <- simulation_data$platform_reported[[row_index]]
+    
+    if (is.na(reported_platform)) {
+      reported_platform <- sample(
+        platform_levels,
+        size = 1,
+        prob = c(0.50, 0.24, 0.12, 0.14)
+      )
+    }
+    
+    # Mostly preserve the self-reported platform, but generate a few validation
+    # mismatches so that the quality-control output can be tested.
+    if (runif(1) < 0.95) {
+      platform_value <- reported_platform
+    } else {
+      platform_value <- sample(
+        setdiff(platform_levels, reported_platform),
+        size = 1
+      )
+    }
+    
+    topic_weights <- base_topic_weights
+    
+    if (use_screening_patterns) {
+      undirected <- clean_numeric(
+        simulation_data$intro_ib_undirected[[row_index]]
+      )
+      thematic <- clean_numeric(
+        simulation_data$intro_ib_thematic[[row_index]]
+      )
+      problem <- clean_numeric(
+        simulation_data$intro_ib_problem[[row_index]]
+      )
+      
+      undirected_effect <- if_else(is.na(undirected), 0, undirected - 3)
+      thematic_effect <- if_else(is.na(thematic), 0, thematic - 3)
+      problem_effect <- if_else(is.na(problem), 0, problem - 3)
+      
+      topic_weights[c(1, 2, 3, 4, 7, 8)] <-
+        topic_weights[c(1, 2, 3, 4, 7, 8)] * exp(0.18 * undirected_effect)
+      
+      topic_weights[c(5, 11, 12, 13)] <-
+        topic_weights[c(5, 11, 12, 13)] * exp(0.22 * thematic_effect)
+      
+      topic_weights[c(3, 6, 9, 10, 14)] <-
+        topic_weights[c(3, 6, 9, 10, 14)] * exp(0.22 * problem_effect)
+    }
+    
+    if (platform_value == "Facebook") {
+      topic_weights[c(1, 4, 11, 14)] <- topic_weights[c(1, 4, 11, 14)] * 1.25
+    } else if (platform_value == "Instagram") {
+      topic_weights[c(6, 11, 13, 14)] <- topic_weights[c(6, 11, 13, 14)] * 1.30
+    } else if (platform_value == "TikTok") {
+      topic_weights[c(5, 11, 13)] <- topic_weights[c(5, 11, 13)] * 1.45
+    } else if (platform_value == "X") {
+      topic_weights[c(1, 2, 5, 7)] <- topic_weights[c(1, 2, 5, 7)] * 1.35
+    }
+    
+    topic_value <- sample(
+      topic_levels,
+      size = 1,
+      prob = topic_weights
+    )
+    
+    source_weights <- base_source_weights
+    
+    if (topic_value %in% topic_levels[c(1, 2)]) {
+      source_weights[c(1, 3, 4)] <- source_weights[c(1, 3, 4)] * 1.60
+    }
+    
+    if (topic_value %in% topic_levels[c(5, 6)]) {
+      source_weights[c(4, 6)] <- source_weights[c(4, 6)] * 1.80
+    }
+    
+    if (topic_value %in% topic_levels[c(7, 14)]) {
+      source_weights[c(4, 5)] <- source_weights[c(4, 5)] * 1.50
+    }
+    
+    if (topic_value %in% topic_levels[c(11, 13)]) {
+      source_weights[c(1, 7, 8)] <- source_weights[c(1, 7, 8)] * 1.45
+    }
+    
+    if (use_screening_patterns) {
+      social_need <- clean_numeric(
+        simulation_data$intro_ib_social[[row_index]]
+      )
+      social_effect <- if_else(is.na(social_need), 0, social_need - 3)
+      source_weights[9] <- source_weights[9] * exp(0.25 * social_effect)
+    }
+    
+    source_value <- sample(
+      source_levels,
+      size = 1,
+      prob = source_weights
+    )
+    
+    format_probabilities <- switch(
+      platform_value,
+      Facebook = c(0.36, 0.39, 0.18, 0.07),
+      Instagram = c(0.08, 0.48, 0.38, 0.06),
+      TikTok = c(0.03, 0.07, 0.86, 0.04),
+      X = c(0.58, 0.27, 0.10, 0.05),
+      c(0.30, 0.35, 0.28, 0.07)
+    )
+    
+    format_value <- sample(
+      format_levels,
+      size = 1,
+      prob = format_probabilities
+    )
+    
+    simulated_platform[[row_index]] <- platform_value
+    simulated_topic[[row_index]] <- topic_value
+    simulated_source[[row_index]] <- source_value
+    simulated_source_name[[row_index]] <- sample(
+      source_name_examples[[source_value]],
+      size = 1
+    )
+    simulated_format[[row_index]] <- format_value
+  }
+  
+  simulation_data <- simulation_data %>%
+    mutate(
+      platform_coded = if (
+        overwrite_existing
+      ) simulated_platform else coalesce(platform_coded, simulated_platform),
+      
+      topic_coded = if (
+        overwrite_existing
+      ) simulated_topic else coalesce(topic_coded, simulated_topic),
+      
+      source_coded = if (
+        overwrite_existing
+      ) simulated_source else coalesce(source_coded, simulated_source),
+      
+      source_name_coded = if (
+        overwrite_existing
+      ) simulated_source_name else coalesce(source_name_coded, simulated_source_name),
+      
+      media_format = if (
+        overwrite_existing
+      ) simulated_format else coalesce(media_format, simulated_format),
+      
+      coding_completed = "Ja",
+      coding_completed_binary = 1L,
+      coder = if_else(
+        overwrite_existing | is.na(clean_text(coder)),
+        "SIMULATED",
+        clean_text(coder)
+      ),
+      coding_date = as.character(Sys.Date()),
+      coding_was_simulated = TRUE
+    ) %>%
+    select(-any_of(c(
+      "intro_ib_undirected",
+      "intro_ib_thematic",
+      "intro_ib_social",
+      "intro_ib_problem"
+    )))
+  
+  simulation_data
+}
+
+
+if (simulate_coding) {
+  coding <- simulate_manual_coding(
+    coding_data = coding,
+    screening_data = screening,
+    seed = simulation_seed,
+    overwrite_existing = simulation_overwrite_existing,
+    use_screening_patterns = simulation_use_screening_patterns
+  )
+  
+  if (write_simulated_coding_sheet) {
+    openxlsx::write.xlsx(
+      coding,
+      file = simulated_coding_file,
+      overwrite = TRUE,
+      asTable = TRUE
+    )
+  }
+} else {
+  coding <- coding %>%
+    mutate(
+      coding_was_simulated = FALSE
+    )
+}
+
+
+#===============================================================================
+# 09 Coding quality checks
+#===============================================================================
+
+manual_coding_variables <- c(
+  "topic_coded",
+  "source_coded",
+  "media_format"
+)
+
+coding <- coding %>%
+  mutate(
+    manual_coding_complete = if_all(
+      all_of(manual_coding_variables),
+      ~ !is.na(clean_text(.x))
+    ),
+    coding_completed_binary = coalesce(
+      coding_completed_binary,
+      as.integer(manual_coding_complete)
+    ),
+    analysis_coding_complete =
+      manual_coding_complete & coding_completed_binary == 1L
+  )
+
+coding_completeness <- tibble(
+  Variable = c(
+    manual_coding_variables,
+    "source_name_coded",
+    "platform_coded",
+    "coding_completed"
+  )
+) %>%
+  mutate(
+    N_Total = nrow(coding),
+    N_Complete = map_int(
+      Variable,
+      ~ sum(!is.na(clean_text(coding[[.x]])))
+    ),
+    N_Missing = N_Total - N_Complete,
+    Percent_Complete = safe_percent(N_Complete, N_Total)
+  )
+
+
+duplicate_screenshot_ids <- coding %>%
+  count(screenshot_id, name = "N_Rows") %>%
+  filter(
+    !is.na(screenshot_id),
+    N_Rows > 1
+  )
+
+
+duplicate_filenames <- coding %>%
+  count(filename, name = "N_Rows") %>%
+  filter(
+    !is.na(filename),
+    N_Rows > 1
+  )
+
+
+invalid_categories <- bind_rows(
+  coding %>%
+    filter(
+      !is.na(topic_coded),
+      !topic_coded %in% topic_levels
+    ) %>%
+    count(topic_coded, name = "N") %>%
+    transmute(
+      Variable = "topic_coded",
+      Invalid_Value = topic_coded,
+      N
+    ),
+  
+  coding %>%
+    filter(
+      !is.na(source_coded),
+      !source_coded %in% source_levels
+    ) %>%
+    count(source_coded, name = "N") %>%
+    transmute(
+      Variable = "source_coded",
+      Invalid_Value = source_coded,
+      N
+    ),
+  
+  coding %>%
+    filter(
+      !is.na(media_format),
+      !media_format %in% format_levels
+    ) %>%
+    count(media_format, name = "N") %>%
+    transmute(
+      Variable = "media_format",
+      Invalid_Value = media_format,
+      N
+    ),
+  
+  coding %>%
+    filter(
+      !is.na(platform_coded),
+      !platform_coded %in% platform_levels
+    ) %>%
+    count(platform_coded, name = "N") %>%
+    transmute(
+      Variable = "platform_coded",
+      Invalid_Value = platform_coded,
+      N
+    )
+)
+
+
+platform_mismatches <- coding %>%
+  filter(
+    !is.na(platform_reported),
+    !is.na(platform_coded),
+    platform_reported != platform_coded
+  ) %>%
+  select(
+    screenshot_id,
+    participant,
+    study_day,
+    filename,
+    platform_reported,
+    platform_coded,
+    coding_was_simulated
+  )
+
+
+study_day_issues <- coding %>%
+  filter(
+    is.na(study_day) |
+      !study_day %in% expected_study_days
+  ) %>%
+  select(
+    screenshot_id,
+    participant,
+    study_day,
+    filename,
+    scheduled
+  )
+
+
+file_issues <- coding %>%
+  filter(file_exists_binary == 0L) %>%
+  select(
+    screenshot_id,
+    participant,
+    study_day,
+    filename,
+    filepath,
+    file_exists_binary
+  )
+
+
+if (
+  strict_coding_check &&
+  !simulate_coding &&
+  any(!coding$analysis_coding_complete)
+) {
+  stop(
+    sum(!coding$analysis_coding_complete),
+    " Screenshot-Zeilen sind noch nicht vollständig codiert. ",
+    "Siehe coding_sheet.xlsx oder setze simulate_coding <- TRUE für einen Testlauf."
+  )
+}
+
+if (
+  strict_coding_check &&
+  nrow(invalid_categories) > 0
+) {
+  stop(
+    "Das Coding Sheet enthält Werte außerhalb des festgelegten Kategoriensystems. ",
+    "Siehe Tabelle 'Invalid_Categories'."
+  )
+}
+
+
+#===============================================================================
+# 10 Build the analysis sample
+#===============================================================================
+
+coding_complete <- coding %>%
+  filter(analysis_coding_complete)
+
+participant_counts_before_screening <- coding_complete %>%
+  count(
+    participant,
+    name = "N_Screenshots"
+  ) %>%
+  mutate(
+    At_Least_Minimum = N_Screenshots >= minimum_screenshots,
+    Screening_Available = participant %in% screening$participant
+  )
+
+eligible_diary_ids <- participant_counts_before_screening %>%
+  filter(At_Least_Minimum) %>%
+  pull(participant)
+
+if (require_screening_match) {
+  eligible_participant_ids <- intersect(
+    eligible_diary_ids,
+    screening$participant
+  )
+} else {
+  eligible_participant_ids <- eligible_diary_ids
+}
+
+if (length(eligible_participant_ids) == 0) {
+  stop(
+    "Nach Anwendung der Einschlusskriterien verbleiben keine Teilnehmenden. ",
+    "Prüfe minimum_screenshots, Screening-Matches und Coding-Vollständigkeit."
+  )
+}
+
+analysis_exclusions <- participant_counts_before_screening %>%
+  mutate(
+    Exclusion_Reason = case_when(
+      !At_Least_Minimum ~ paste0(
+        "Weniger als ",
+        minimum_screenshots,
+        " Screenshots"
+      ),
+      require_screening_match & !Screening_Available ~
+        "Kein vollständiges Screening-Match",
+      TRUE ~ "Eingeschlossen"
+    )
+  )
+
+
+daily <- coding_complete %>%
+  filter(participant %in% eligible_participant_ids) %>%
+  mutate(
+    topic_coded = factor(
+      topic_coded,
+      levels = topic_levels
+    ),
+    source_coded = factor(
+      source_coded,
+      levels = source_levels
+    ),
+    media_format = factor(
+      media_format,
+      levels = format_levels
+    ),
+    platform = factor(
+      platform_coded,
+      levels = platform_levels
+    ),
+    incidentality = factor(
+      incidentality,
+      levels = incidentality_levels,
+      ordered = TRUE
+    ),
+    locality = factor(
+      locality,
+      levels = locality_levels
+    ),
+    situation = factor(
+      situation,
+      levels = situation_levels
+    ),
+    incidental_strict = case_when(
+      is.na(incidentality) ~ NA_integer_,
+      incidentality == "Zufällig begegnet" ~ 1L,
+      TRUE ~ 0L
+    ),
+    incidental_broad = case_when(
+      is.na(incidentality) ~ NA_integer_,
+      incidentality %in% c(
+        "Gefolgt, nicht gezielt gesucht",
+        "Zufällig begegnet"
+      ) ~ 1L,
+      TRUE ~ 0L
+    ),
+    interaction_count = rowSums(
+      cbind(
+        interaction_read,
+        interaction_research,
+        interaction_engagement
+      ),
+      na.rm = TRUE
+    ),
+    interaction_any = case_when(
+      is.na(interaction_read) &
+        is.na(interaction_research) &
+        is.na(interaction_engagement) ~ NA_integer_,
+      interaction_count > 0 ~ 1L,
+      TRUE ~ 0L
+    ),
+    active_follow_up = case_when(
+      is.na(interaction_research) &
+        is.na(interaction_engagement) ~ NA_integer_,
+      interaction_research == 1L |
+        interaction_engagement == 1L ~ 1L,
+      TRUE ~ 0L
+    ),
+    topic_macro = case_when(
+      as.character(topic_coded) %in% topic_levels[c(1, 2, 3, 4, 7, 8)] ~
+        "Aktuelles & öffentliche Angelegenheiten",
+      as.character(topic_coded) %in% topic_levels[c(6, 9, 10, 14)] ~
+        "Praktische Information & Service",
+      as.character(topic_coded) %in% topic_levels[c(5, 11, 12, 13)] ~
+        "Wissen, Interessen & Kultur",
+      TRUE ~ "Sonstiges / nicht eindeutig"
+    ),
+    source_macro = case_when(
+      as.character(source_coded) == source_levels[1] ~
+        "Journalistische Medien",
+      as.character(source_coded) %in% source_levels[c(2, 10)] ~
+        "Alternative, aggregierte oder informelle Medien",
+      as.character(source_coded) %in% source_levels[c(3, 4)] ~
+        "Politik & öffentliche Institutionen",
+      as.character(source_coded) %in% source_levels[c(5, 6)] ~
+        "Zivilgesellschaft & Expertise",
+      as.character(source_coded) %in% source_levels[c(7, 8)] ~
+        "Kommerzielle & öffentliche Personenaccounts",
+      as.character(source_coded) == source_levels[9] ~
+        "Private Person / Peer",
+      TRUE ~ "Sonstige / nicht erkennbar"
+    ),
+    platform_matches_report = case_when(
+      is.na(platform_reported) | is.na(platform_coded) ~ NA_integer_,
+      platform_reported == platform_coded ~ 1L,
+      TRUE ~ 0L
+    )
+  )
+
+screening_selected <- screening %>%
+  select(
+    participant,
+    any_of(
+      c(
+        "intro_age_num",
+        "gender",
+        "education_three_level",
+        "age_group",
+        "intro_intensity",
+        "intro_ib_undirected",
+        "intro_ib_thematic",
+        "intro_ib_social",
+        "intro_ib_problem",
+        "incidentality_index",
+        "context_local",
+        "context_social",
+        "intro_freq_facebook",
+        "intro_freq_instagram",
+        "intro_freq_tiktok",
+        "intro_freq_x",
+        "n_platforms_used",
+        "n_platforms_weekly",
+        "platform_repertoire",
+        "primary_platform",
+        "dominant_information_need"
+      )
+    )
+  ) %>%
+  mutate(
+    # Standardise person-level predictors before they are replicated across
+    # screenshot rows. This avoids weighting participants with many uploads more
+    # strongly when calculating z-scores.
+    intro_intensity_z = safe_z(intro_intensity),
+    incidentality_index_z = safe_z(incidentality_index),
+    intro_ib_undirected_z = safe_z(intro_ib_undirected),
+    intro_ib_thematic_z = safe_z(intro_ib_thematic),
+    intro_ib_social_z = safe_z(intro_ib_social),
+    intro_ib_problem_z = safe_z(intro_ib_problem)
+  )
+
+
+daily <- daily %>%
+  left_join(
+    screening_selected,
+    by = "participant"
+  ) %>%
+  mutate(
+    study_day_z = safe_z(study_day)
+  )
+
+
+#===============================================================================
+# 11 Sample and participation descriptives
+#===============================================================================
+
+participant_counts <- daily %>%
+  group_by(participant) %>%
+  summarise(
+    N_Screenshots = n(),
+    N_Active_Days = n_distinct(study_day[study_day %in% expected_study_days]),
+    First_Study_Day = safe_min(study_day),
+    Last_Study_Day = safe_max(study_day),
+    .groups = "drop"
+  )
+
+sample_overview <- tibble(
+  Indicator = c(
+    "Rows in coding sheet",
+    "Complete coded screenshot rows",
+    "Eligible participants before screening match",
+    "Eligible participants in final daily sample",
+    "Screenshots in final daily sample",
+    "Minimum screenshots required",
+    "Median screenshots per participant",
+    "Mean screenshots per participant",
+    "Median active diary days",
+    "Simulation active",
+    "Simulation uses screening patterns"
+  ),
+  Value = c(
+    nrow(coding),
+    nrow(coding_complete),
+    length(eligible_diary_ids),
+    n_distinct(daily$participant),
+    nrow(daily),
+    minimum_screenshots,
+    safe_median(participant_counts$N_Screenshots),
+    safe_mean(participant_counts$N_Screenshots),
+    safe_median(participant_counts$N_Active_Days),
+    simulate_coding,
+    simulate_coding && simulation_use_screening_patterns
+  )
+)
+
+participant_day_grid <- tidyr::expand_grid(
+  participant = eligible_participant_ids,
+  study_day = expected_study_days
+) %>%
+  left_join(
+    daily %>%
+      count(
+        participant,
+        study_day,
+        name = "N_Posts"
+      ),
+    by = c("participant", "study_day")
+  ) %>%
+  mutate(
+    N_Posts = replace_na(N_Posts, 0L),
+    Any_Post = N_Posts > 0
+  )
+
+
+day_outcomes <- daily %>%
+  filter(study_day %in% expected_study_days) %>%
+  group_by(study_day) %>%
+  summarise(
+    N_Observed_Posts = n(),
+    N_Contributing_Participants = n_distinct(participant),
+    Percent_Incidental_Strict = 100 * safe_mean(incidental_strict),
+    Percent_Incidental_Broad = 100 * safe_mean(incidental_broad),
+    Percent_Read_Thoroughly = 100 * safe_mean(interaction_read),
+    Percent_Researched = 100 * safe_mean(interaction_research),
+    Percent_Engaged = 100 * safe_mean(interaction_engagement),
+    Mean_Interaction_Count = safe_mean(interaction_count),
+    .groups = "drop"
+  )
+
+
+day_summary <- participant_day_grid %>%
+  group_by(study_day) %>%
+  summarise(
+    N_Eligible_Participants = n(),
+    N_Participants_With_Post = sum(Any_Post),
+    Percent_With_Post = 100 * mean(Any_Post),
+    Mean_Posts_Per_Eligible_Participant = mean(N_Posts),
+    SD_Posts_Per_Eligible_Participant = sd(N_Posts),
+    Median_Posts_Per_Eligible_Participant = median(N_Posts),
+    Total_Posts = sum(N_Posts),
+    .groups = "drop"
+  ) %>%
+  left_join(
+    day_outcomes,
+    by = "study_day"
+  )
+
+
+#===============================================================================
+# 12 Main screenshot-weighted distributions
+#===============================================================================
+
+topic_distribution <- frequency_distribution(
+  daily,
+  "topic_coded",
+  "Topic",
+  topic_levels
+)
+
+source_distribution <- frequency_distribution(
+  daily,
+  "source_coded",
+  "Source/Accounttyp",
+  source_levels
+)
+
+source_name_distribution <- daily %>%
+  mutate(
+    source_name_coded = replace_na(
+      clean_text(source_name_coded),
+      "Quelle nicht benannt"
+    )
+  ) %>%
+  count(
+    source_name_coded,
+    sort = TRUE,
+    name = "N"
+  ) %>%
+  mutate(
+    Percent = 100 * N / sum(N)
+  )
+
+platform_distribution <- frequency_distribution(
+  daily,
+  "platform",
+  "Plattform",
+  platform_levels
+)
+
+format_distribution <- frequency_distribution(
+  daily,
+  "media_format",
+  "Medienformat",
+  format_levels
+)
+
+incidentality_distribution <- frequency_distribution(
+  daily,
+  "incidentality",
+  "Incidentality",
+  incidentality_levels
+)
+
+locality_distribution <- frequency_distribution(
+  daily,
+  "locality",
+  "Räumlicher Kontext",
+  locality_levels
+)
+
+situation_distribution <- frequency_distribution(
+  daily,
+  "situation",
+  "Sozialer Kontext",
+  situation_levels
+)
+
+interaction_distribution <- tibble(
+  Interaction = c(
+    "Gründlich gelesen/angeschaut",
+    "Weiter recherchiert",
+    "Sichtbar interagiert",
+    "Mindestens eine Interaktion",
+    "Aktives Follow-up: Recherche oder Engagement"
+  ),
+  N_Valid = c(
+    sum(!is.na(daily$interaction_read)),
+    sum(!is.na(daily$interaction_research)),
+    sum(!is.na(daily$interaction_engagement)),
+    sum(!is.na(daily$interaction_any)),
+    sum(!is.na(daily$active_follow_up))
+  ),
+  N_Yes = c(
+    sum(daily$interaction_read == 1L, na.rm = TRUE),
+    sum(daily$interaction_research == 1L, na.rm = TRUE),
+    sum(daily$interaction_engagement == 1L, na.rm = TRUE),
+    sum(daily$interaction_any == 1L, na.rm = TRUE),
+    sum(daily$active_follow_up == 1L, na.rm = TRUE)
+  )
+) %>%
+  mutate(
+    Percent_Yes = safe_percent(N_Yes, N_Valid)
+  )
+
+
+#===============================================================================
+# 13 Participant-weighted distributions
+#===============================================================================
+
+topic_shares <- make_participant_shares(
+  daily,
+  "topic_coded",
+  topic_levels,
+  "Topic"
+)
+
+source_shares <- make_participant_shares(
+  daily,
+  "source_coded",
+  source_levels,
+  "Source/Accounttyp"
+)
+
+platform_shares <- make_participant_shares(
+  daily,
+  "platform",
+  platform_levels,
+  "Plattform"
+)
+
+format_shares <- make_participant_shares(
+  daily,
+  "media_format",
+  format_levels,
+  "Medienformat"
+)
+
+incidentality_shares <- make_participant_shares(
+  daily,
+  "incidentality",
+  incidentality_levels,
+  "Incidentality"
+)
+
+topic_participant_summary <- summarise_participant_shares(topic_shares)
+source_participant_summary <- summarise_participant_shares(source_shares)
+platform_participant_summary <- summarise_participant_shares(platform_shares)
+format_participant_summary <- summarise_participant_shares(format_shares)
+incidentality_participant_summary <- summarise_participant_shares(
+  incidentality_shares
+)
+
+
+#===============================================================================
+# 14 Participant-level diary indicators
+#===============================================================================
+
+participant_metrics <- daily %>%
+  group_by(participant) %>%
+  summarise(
+    N_Screenshots = n(),
+    N_Active_Days = n_distinct(study_day[study_day %in% expected_study_days]),
+    Mean_Posts_Per_Active_Day = safe_divide(N_Screenshots, N_Active_Days),
+    
+    Share_Incidental_Strict = safe_mean(incidental_strict),
+    Share_Incidental_Broad = safe_mean(incidental_broad),
+    Share_Read_Thoroughly = safe_mean(interaction_read),
+    Share_Researched = safe_mean(interaction_research),
+    Share_Engaged = safe_mean(interaction_engagement),
+    Share_Any_Interaction = safe_mean(interaction_any),
+    Share_Active_Follow_Up = safe_mean(active_follow_up),
+    Mean_Interaction_Count = safe_mean(interaction_count),
+    
+    Share_Home = share_value(as.character(locality), "Zu Hause"),
+    Share_Away = share_value(as.character(locality), "Unterwegs"),
+    Share_Alone = share_value(as.character(situation), "Allein"),
+    Share_Together = share_value(
+      as.character(situation),
+      "Gemeinsam mit jemandem"
+    ),
+    
+    Topic_Richness = n_distinct_valid(topic_coded),
+    Topic_Shannon = shannon_entropy(topic_coded),
+    Topic_Evenness = shannon_evenness(topic_coded),
+    Topic_Dominant_Share = dominant_share(topic_coded),
+    
+    Source_Richness = n_distinct_valid(source_coded),
+    Source_Shannon = shannon_entropy(source_coded),
+    Source_Evenness = shannon_evenness(source_coded),
+    Source_Dominant_Share = dominant_share(source_coded),
+    
+    Platform_Richness = n_distinct_valid(platform),
+    Platform_Shannon = shannon_entropy(platform),
+    Platform_Evenness = shannon_evenness(platform),
+    Platform_Dominant_Share = dominant_share(platform),
+    
+    Format_Richness = n_distinct_valid(media_format),
+    Format_Shannon = shannon_entropy(media_format),
+    Format_Evenness = shannon_evenness(media_format),
+    Format_Dominant_Share = dominant_share(media_format),
+    
+    N_Unique_Account_Names = n_distinct_valid(source_name_coded),
+    Account_Dominant_Share = dominant_share(source_name_coded),
+    
+    Share_Current_Affairs = share_value(
+      topic_macro,
+      "Aktuelles & öffentliche Angelegenheiten"
+    ),
+    Share_Practical_Service = share_value(
+      topic_macro,
+      "Praktische Information & Service"
+    ),
+    Share_Knowledge_Interests = share_value(
+      topic_macro,
+      "Wissen, Interessen & Kultur"
+    ),
+    Share_Journalistic_Sources = share_value(
+      source_macro,
+      "Journalistische Medien"
+    ),
+    Share_Peer_Sources = share_value(
+      source_macro,
+      "Private Person / Peer"
+    ),
+    
+    Share_Facebook = share_value(as.character(platform), "Facebook"),
+    Share_Instagram = share_value(as.character(platform), "Instagram"),
+    Share_TikTok = share_value(as.character(platform), "TikTok"),
+    Share_X = share_value(as.character(platform), "X"),
+    
+    Platform_Report_Match_Rate = safe_mean(platform_matches_report),
+    .groups = "drop"
+  ) %>%
+  left_join(
+    screening_selected,
+    by = "participant"
+  )
+
+# Determine the diary-dominant platform, retaining ties.
+daily_primary_platform <- platform_shares %>%
+  group_by(participant) %>%
+  filter(
+    !is.na(Share),
+    Share == max(Share, na.rm = TRUE),
+    Share > 0
+  ) %>%
+  summarise(
+    Daily_Primary_Platform = paste(Category, collapse = " / "),
+    .groups = "drop"
+  )
+
+platform_sets_overlap <- function(x, y) {
+  if (is.na(x) || is.na(y)) return(NA_integer_)
+  
+  x_set <- clean_text(str_split(x, " / ", simplify = FALSE)[[1]])
+  y_set <- clean_text(str_split(y, " / ", simplify = FALSE)[[1]])
+  
+  as.integer(length(intersect(x_set, y_set)) > 0)
+}
+
+participant_metrics <- participant_metrics %>%
+  left_join(
+    daily_primary_platform,
+    by = "participant"
+  ) %>%
+  mutate(
+    Primary_Platform_Match = map2_int(
+      clean_text(primary_platform),
+      clean_text(Daily_Primary_Platform),
+      platform_sets_overlap
+    ),
+    Local_Context_Alignment = case_when(
+      clean_text(context_local) == "Zu Hause" ~ Share_Home,
+      clean_text(context_local) == "Unterwegs" ~ Share_Away,
+      str_detect(
+        str_to_lower(clean_text(context_local)),
+        "beiden|ähnlich|gleich"
+      ) ~ 1 - abs(Share_Home - Share_Away),
+      TRUE ~ NA_real_
+    ),
+    Social_Context_Alignment = case_when(
+      str_detect(
+        str_to_lower(clean_text(context_social)),
+        "überwiegend allein|mostly alone"
+      ) ~ Share_Alone,
+      str_detect(
+        str_to_lower(clean_text(context_social)),
+        "überwiegend gemeinsam|mostly together"
+      ) ~ Share_Together,
+      str_detect(
+        str_to_lower(clean_text(context_social)),
+        "ähnlich|gleich"
+      ) ~ 1 - abs(Share_Alone - Share_Together),
+      TRUE ~ NA_real_
+    )
+  )
+
+# Experimental profile alignment: four screening needs are compared with four
+# observed proxies. The social need is linked to peer sources, not to a topic.
+participant_metrics <- participant_metrics %>%
+  rowwise() %>%
+  mutate(
+    Need_Content_Alignment = profile_alignment(
+      screening_values = c(
+        clean_numeric(intro_ib_undirected),
+        clean_numeric(intro_ib_thematic),
+        clean_numeric(intro_ib_social),
+        clean_numeric(intro_ib_problem)
+      ),
+      observed_values = c(
+        Share_Current_Affairs,
+        Share_Knowledge_Interests,
+        Share_Peer_Sources,
+        Share_Practical_Service
+      )
+    ),
+    Screening_Dominant_Need = {
+      need_values <- c(
+        Ungerichtet = clean_numeric(intro_ib_undirected),
+        Thematisch = clean_numeric(intro_ib_thematic),
+        Sozial = clean_numeric(intro_ib_social),
+        Problembezogen = clean_numeric(intro_ib_problem)
+      )
+      
+      if (all(is.na(need_values))) {
+        NA_character_
+      } else if (sum(need_values == max(need_values, na.rm = TRUE), na.rm = TRUE) > 1) {
+        "Kein eindeutiges dominantes Bedürfnis"
+      } else {
+        names(which.max(need_values))
+      }
+    },
+    Observed_Dominant_Proxy = {
+      proxy_values <- c(
+        Ungerichtet = Share_Current_Affairs,
+        Thematisch = Share_Knowledge_Interests,
+        Sozial = Share_Peer_Sources,
+        Problembezogen = Share_Practical_Service
+      )
+      
+      if (all(is.na(proxy_values))) {
+        NA_character_
+      } else if (sum(proxy_values == max(proxy_values, na.rm = TRUE), na.rm = TRUE) > 1) {
+        "Kein eindeutiger dominanter Proxy"
+      } else {
+        names(which.max(proxy_values))
+      }
+    },
+    Dominant_Need_Proxy_Match = case_when(
+      is.na(Screening_Dominant_Need) |
+        is.na(Observed_Dominant_Proxy) ~ NA_integer_,
+      str_detect(Screening_Dominant_Need, "Kein eindeutiges") |
+        str_detect(Observed_Dominant_Proxy, "Kein eindeutiger") ~ NA_integer_,
+      Screening_Dominant_Need == Observed_Dominant_Proxy ~ 1L,
+      TRUE ~ 0L
+    )
+  ) %>%
+  ungroup()
+
+
+participant_metrics_summary <- participant_metrics %>%
+  select(
+    N_Screenshots,
+    N_Active_Days,
+    Mean_Posts_Per_Active_Day,
+    starts_with("Share_"),
+    ends_with("_Richness"),
+    ends_with("_Shannon"),
+    ends_with("_Evenness"),
+    ends_with("_Dominant_Share"),
+    Platform_Report_Match_Rate,
+    Local_Context_Alignment,
+    Social_Context_Alignment,
+    Need_Content_Alignment
+  ) %>%
+  pivot_longer(
+    everything(),
+    names_to = "Indicator",
+    values_to = "Value"
+  ) %>%
+  group_by(Indicator) %>%
+  summarise(
+    N_Valid = sum(!is.na(Value)),
+    Mean = safe_mean(Value),
+    SD = safe_sd(Value),
+    Median = safe_median(Value),
+    Minimum = safe_min(Value),
+    Maximum = safe_max(Value),
+    .groups = "drop"
+  )
+
+
+#===============================================================================
+# 15 Content, platform, incidentality and interaction patterns
+#===============================================================================
+
+topic_by_platform <- cross_tabulation(
+  daily,
+  "topic_coded",
+  "platform",
+  "Topic",
+  "Plattform"
+)
+
+source_by_platform <- cross_tabulation(
+  daily,
+  "source_coded",
+  "platform",
+  "Source/Accounttyp",
+  "Plattform"
+)
+
+format_by_platform <- cross_tabulation(
+  daily,
+  "media_format",
+  "platform",
+  "Medienformat",
+  "Plattform"
+)
+
+topic_by_incidentality <- cross_tabulation(
+  daily,
+  "topic_coded",
+  "incidentality",
+  "Topic",
+  "Incidentality"
+)
+
+source_by_incidentality <- cross_tabulation(
+  daily,
+  "source_coded",
+  "incidentality",
+  "Source/Accounttyp",
+  "Incidentality"
+)
+
+format_by_incidentality <- cross_tabulation(
+  daily,
+  "media_format",
+  "incidentality",
+  "Medienformat",
+  "Incidentality"
+)
+
+interaction_group_variables <- c(
+  topic_coded = "Topic",
+  source_coded = "Source/Accounttyp",
+  platform = "Plattform",
+  media_format = "Medienformat",
+  incidentality = "Incidentality",
+  locality = "Räumlicher Kontext",
+  situation = "Sozialer Kontext",
+  study_day = "Studientag"
+)
+
+interaction_outcomes <- c(
+  interaction_read = "Gründlich gelesen/angeschaut",
+  interaction_research = "Weiter recherchiert",
+  interaction_engagement = "Sichtbar interagiert"
+)
+
+interaction_by_groups <- purrr::imap_dfr(
+  interaction_group_variables,
+  function(group_label, group_variable) {
+    purrr::imap_dfr(
+      interaction_outcomes,
+      function(outcome_label, outcome_variable) {
+        binary_group_summary(
+          daily,
+          group_variable = group_variable,
+          outcome_variable = outcome_variable,
+          group_label = group_label,
+          outcome_label = outcome_label
+        )
+      }
+    )
+  }
+)
+
+
+#===============================================================================
+# 16 Screening-diary alignment and targeted correlations
+#===============================================================================
+
+screening_diary_correlations <- bind_rows(
+  spearman_test(
+    participant_metrics,
+    "incidentality_index",
+    "Share_Incidental_Strict",
+    "Screening Incidentality-Index",
+    "Diary-Anteil incidental strict"
+  ),
+  spearman_test(
+    participant_metrics,
+    "incidentality_index",
+    "Share_Incidental_Broad",
+    "Screening Incidentality-Index",
+    "Diary-Anteil incidental broad"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_intensity",
+    "Share_Read_Thoroughly",
+    "Screening Nutzungsintensität",
+    "Diary-Anteil gründlich gelesen"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_intensity",
+    "Share_Researched",
+    "Screening Nutzungsintensität",
+    "Diary-Anteil weiter recherchiert"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_intensity",
+    "Share_Engaged",
+    "Screening Nutzungsintensität",
+    "Diary-Anteil sichtbar interagiert"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_intensity",
+    "Mean_Interaction_Count",
+    "Screening Nutzungsintensität",
+    "Diary mittlere Interaktionszahl"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_ib_undirected",
+    "Share_Current_Affairs",
+    "Ungerichtetes Informationsbedürfnis",
+    "Anteil aktueller öffentlicher Angelegenheiten"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_ib_thematic",
+    "Share_Knowledge_Interests",
+    "Thematisches Informationsbedürfnis",
+    "Anteil Wissen, Interessen und Kultur"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_ib_problem",
+    "Share_Practical_Service",
+    "Problembezogenes Informationsbedürfnis",
+    "Anteil praktischer Information und Service"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_ib_social",
+    "Share_Peer_Sources",
+    "Soziales Informationsbedürfnis",
+    "Anteil Peer-Quellen"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_ib_undirected",
+    "Share_Incidental_Broad",
+    "Ungerichtetes Informationsbedürfnis",
+    "Diary-Anteil incidental broad"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_ib_thematic",
+    "Topic_Shannon",
+    "Thematisches Informationsbedürfnis",
+    "Thematische Diversität"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_ib_problem",
+    "Share_Researched",
+    "Problembezogenes Informationsbedürfnis",
+    "Diary-Anteil weiter recherchiert"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_age_num",
+    "Share_Incidental_Broad",
+    "Alter",
+    "Diary-Anteil incidental broad"
+  ),
+  spearman_test(
+    participant_metrics,
+    "intro_age_num",
+    "Share_Engaged",
+    "Alter",
+    "Diary-Anteil sichtbar interagiert"
+  )
+) %>%
+  mutate(
+    P_Adjusted_BH = p.adjust(P_Value, method = "BH"),
+    Analysis_Type = "Explorativ"
+  )
+
+
+need_variables <- c(
+  intro_ib_undirected = "Ungerichtet: Nachrichten & aktuelles Geschehen",
+  intro_ib_thematic = "Thematisch: persönliche Interessen",
+  intro_ib_social = "Sozial: soziales Umfeld",
+  intro_ib_problem = "Problembezogen: konkrete Problemlösung"
+)
+
+
+topic_need_correlations <- tidyr::crossing(
+  Topic = topic_levels,
+  Need_Variable = names(need_variables)
+) %>%
+  mutate(
+    Need = unname(need_variables[Need_Variable])
+  ) %>%
+  pmap_dfr(
+    function(Topic, Need_Variable, Need) {
+      analysis_data <- topic_shares %>%
+        filter(Category == Topic) %>%
+        select(participant, Share) %>%
+        left_join(
+          screening %>%
+            select(
+              participant,
+              all_of(Need_Variable)
+            ),
+          by = "participant"
+        )
+      
+      result <- spearman_test(
+        analysis_data,
+        Need_Variable,
+        "Share",
+        Need,
+        Topic
+      )
+      
+      result %>%
+        transmute(
+          Topic,
+          Need,
+          N,
+          Spearman_Rho,
+          P_Value
+        )
+    }
+  ) %>%
+  group_by(Need) %>%
+  mutate(
+    P_Adjusted_BH_Within_Need = p.adjust(P_Value, method = "BH")
+  ) %>%
+  ungroup() %>%
+  mutate(
+    Analysis_Type = "Explorativ"
+  )
+
+
+source_need_correlations <- tidyr::crossing(
+  Source = source_levels,
+  Need_Variable = names(need_variables)
+) %>%
+  mutate(
+    Need = unname(need_variables[Need_Variable])
+  ) %>%
+  pmap_dfr(
+    function(Source, Need_Variable, Need) {
+      analysis_data <- source_shares %>%
+        filter(Category == Source) %>%
+        select(participant, Share) %>%
+        left_join(
+          screening %>%
+            select(
+              participant,
+              all_of(Need_Variable)
+            ),
+          by = "participant"
+        )
+      
+      result <- spearman_test(
+        analysis_data,
+        Need_Variable,
+        "Share",
+        Need,
+        Source
+      )
+      
+      result %>%
+        transmute(
+          Source,
+          Need,
+          N,
+          Spearman_Rho,
+          P_Value
+        )
+    }
+  ) %>%
+  group_by(Need) %>%
+  mutate(
+    P_Adjusted_BH_Within_Need = p.adjust(P_Value, method = "BH")
+  ) %>%
+  ungroup() %>%
+  mutate(
+    Analysis_Type = "Explorativ"
+  )
+
+
+platform_frequency_map <- c(
+  Facebook = "intro_freq_facebook",
+  Instagram = "intro_freq_instagram",
+  TikTok = "intro_freq_tiktok",
+  X = "intro_freq_x"
+)
+
+platform_alignment_correlations <- imap_dfr(
+  platform_frequency_map,
+  function(screening_variable, platform_name) {
+    analysis_data <- platform_shares %>%
+      filter(Category == platform_name) %>%
+      select(participant, Share) %>%
+      left_join(
+        screening %>%
+          select(
+            participant,
+            all_of(screening_variable)
+          ),
+        by = "participant"
+      )
+    
+    result <- spearman_test(
+      analysis_data,
+      screening_variable,
+      "Share",
+      paste0(platform_name, ": Screening-Nutzungsfrequenz"),
+      paste0(platform_name, ": Diary-Anteil")
+    )
+    
+    result %>%
+      mutate(
+        Platform = platform_name,
+        .before = 1
+      )
+  }
+) %>%
+  mutate(
+    P_Adjusted_BH = p.adjust(P_Value, method = "BH"),
+    Analysis_Type = "Explorativ"
+  )
+
+
+alignment_summary <- participant_metrics %>%
+  summarise(
+    N_Primary_Platform_Valid = sum(!is.na(Primary_Platform_Match)),
+    N_Primary_Platform_Match = sum(Primary_Platform_Match == 1L, na.rm = TRUE),
+    Percent_Primary_Platform_Match = 100 * safe_mean(Primary_Platform_Match),
+    Mean_Local_Context_Alignment = safe_mean(Local_Context_Alignment),
+    Mean_Social_Context_Alignment = safe_mean(Social_Context_Alignment),
+    Mean_Need_Content_Alignment = safe_mean(Need_Content_Alignment),
+    N_Dominant_Need_Proxy_Valid = sum(!is.na(Dominant_Need_Proxy_Match)),
+    Percent_Dominant_Need_Proxy_Match =
+      100 * safe_mean(Dominant_Need_Proxy_Match)
+  )
+
+
+#===============================================================================
+# 17 Descriptive subgroup comparisons
+#===============================================================================
+
+participant_metric_variables <- c(
+  "Share_Incidental_Broad",
+  "Share_Read_Thoroughly",
+  "Share_Researched",
+  "Share_Engaged",
+  "Topic_Shannon",
+  "Source_Shannon",
+  "Share_Current_Affairs",
+  "Share_Practical_Service",
+  "Share_Knowledge_Interests",
+  "Share_Journalistic_Sources"
+)
+
+subgroup_variables <- c(
+  age_group = "Altersgruppe",
+  gender = "Geschlecht",
+  education_three_level = "Bildungsniveau",
+  platform_repertoire = "Screening-Plattformrepertoire",
+  primary_platform = "Screening-Primärplattform"
+)
+
+subgroup_summaries <- purrr::imap_dfr(
+  subgroup_variables,
+  function(group_label, group_variable) {
+    purrr::map_dfr(
+      participant_metric_variables,
+      function(metric_variable) {
+        participant_metrics %>%
+          transmute(
+            Group = clean_text(.data[[group_variable]]),
+            Value = clean_numeric(.data[[metric_variable]])
+          ) %>%
+          filter(!is.na(Group)) %>%
+          group_by(Group) %>%
+          summarise(
+            N = sum(!is.na(Value)),
+            Mean = safe_mean(Value),
+            SD = safe_sd(Value),
+            Median = safe_median(Value),
+            Minimum = safe_min(Value),
+            Maximum = safe_max(Value),
+            .groups = "drop"
+          ) %>%
+          mutate(
+            Grouping_Variable = group_label,
+            Metric = metric_variable,
+            .before = 1
+          )
+      }
+    )
+  }
+)
+
+
+#===============================================================================
+# 18 Optional exploratory mixed models
+#===============================================================================
+
+fit_binary_glmm <- function(
+    data,
+    formula,
+    model_name,
+    outcome_variable
+) {
+  formula_variables <- all.vars(formula)
+  
+  model_data <- data %>%
+    select(all_of(formula_variables)) %>%
+    drop_na() %>%
+    mutate(
+      across(
+        where(is.character),
+        as.factor
+      ),
+      across(
+        where(is.factor),
+        forcats::fct_drop
+      )
+    )
+  
+  n_observations <- nrow(model_data)
+  n_participants <- n_distinct(model_data$participant)
+  n_events <- sum(model_data[[outcome_variable]] == 1, na.rm = TRUE)
+  n_non_events <- sum(model_data[[outcome_variable]] == 0, na.rm = TRUE)
+  
+  if (
+    n_observations < minimum_model_n ||
+    n_participants < minimum_model_participants ||
+    n_events < minimum_model_events ||
+    n_non_events < minimum_model_events
+  ) {
+    return(
+      list(
+        model = NULL,
+        status = tibble(
+          Model = model_name,
+          Status = "Not fitted: insufficient data/events",
+          N = n_observations,
+          N_Participants = n_participants,
+          N_Events = n_events,
+          N_Non_Events = n_non_events,
+          Singular = NA,
+          Convergence_Message = NA_character_
+        ),
+        tidy = tibble()
+      )
+    )
+  }
+  
+  fitted_model <- tryCatch(
+    suppressWarnings(
+      lme4::glmer(
+        formula,
+        data = model_data,
+        family = binomial,
+        control = lme4::glmerControl(
+          optimizer = "bobyqa",
+          optCtrl = list(maxfun = 200000)
+        )
+      )
+    ),
+    error = function(e) e
+  )
+  
+  if (inherits(fitted_model, "error")) {
+    return(
+      list(
+        model = NULL,
+        status = tibble(
+          Model = model_name,
+          Status = paste0("Model error: ", conditionMessage(fitted_model)),
+          N = n_observations,
+          N_Participants = n_participants,
+          N_Events = n_events,
+          N_Non_Events = n_non_events,
+          Singular = NA,
+          Convergence_Message = conditionMessage(fitted_model)
+        ),
+        tidy = tibble()
+      )
+    )
+  }
+  
+  convergence_messages <- fitted_model@optinfo$conv$lme4$messages
+  
+  status <- tibble(
+    Model = model_name,
+    Status = "Fitted",
+    N = n_observations,
+    N_Participants = n_participants,
+    N_Events = n_events,
+    N_Non_Events = n_non_events,
+    Singular = lme4::isSingular(fitted_model, tol = 1e-4),
+    Convergence_Message = if (
+      is.null(convergence_messages)
+    ) NA_character_ else paste(convergence_messages, collapse = " | ")
+  )
+  
+  tidy_result <- tryCatch(
+    broom.mixed::tidy(
+      fitted_model,
+      effects = "fixed",
+      conf.int = TRUE,
+      exponentiate = TRUE
+    ) %>%
+      mutate(
+        Model = model_name,
+        Effect_Scale = "Odds ratio",
+        .before = 1
+      ),
+    error = function(e) {
+      tibble(
+        Model = model_name,
+        term = NA_character_,
+        estimate = NA_real_,
+        std.error = NA_real_,
+        statistic = NA_real_,
+        p.value = NA_real_,
+        conf.low = NA_real_,
+        conf.high = NA_real_,
+        Effect_Scale = paste0("Tidy error: ", conditionMessage(e))
+      )
+    }
+  )
+  
+  list(
+    model = fitted_model,
+    status = status,
+    tidy = tidy_result
+  )
+}
+
+
+model_results <- list()
+
+if (run_mixed_models) {
+  model_results$incidental_strict <- fit_binary_glmm(
+    daily,
+    incidental_strict ~
+      incidentality_index_z +
+      platform +
+      topic_macro +
+      study_day_z +
+      (1 | participant),
+    model_name = "Strict incidentality",
+    outcome_variable = "incidental_strict"
+  )
+  
+  model_results$read_thoroughly <- fit_binary_glmm(
+    daily,
+    interaction_read ~
+      incidental_broad +
+      locality +
+      situation +
+      media_format +
+      study_day_z +
+      (1 | participant),
+    model_name = "Thorough reading",
+    outcome_variable = "interaction_read"
+  )
+  
+  model_results$further_research <- fit_binary_glmm(
+    daily,
+    interaction_research ~
+      incidental_broad +
+      topic_macro +
+      intro_ib_problem_z +
+      study_day_z +
+      (1 | participant),
+    model_name = "Further research",
+    outcome_variable = "interaction_research"
+  )
+  
+  model_results$visible_engagement <- fit_binary_glmm(
+    daily,
+    interaction_engagement ~
+      incidental_broad +
+      source_macro +
+      situation +
+      intro_intensity_z +
+      study_day_z +
+      (1 | participant),
+    model_name = "Visible engagement",
+    outcome_variable = "interaction_engagement"
+  )
+}
+
+model_status <- if (length(model_results) == 0) {
+  tibble(
+    Model = "All models",
+    Status = "Mixed models disabled",
+    N = NA_integer_,
+    N_Participants = NA_integer_,
+    N_Events = NA_integer_,
+    N_Non_Events = NA_integer_,
+    Singular = NA,
+    Convergence_Message = NA_character_
+  )
+} else {
+  purrr::map_dfr(model_results, "status")
+}
+
+model_coefficients <- if (length(model_results) == 0) {
+  tibble()
+} else {
+  purrr::map_dfr(model_results, "tidy")
+}
+
+model_objects <- purrr::map(model_results, "model")
+
+
+#===============================================================================
+# 19 Visual design
 #===============================================================================
 
 project_colors <- c(
@@ -988,142 +3052,62 @@ project_colors <- c(
 )
 
 
-platform_colors <- c(
-  Facebook = "#315F6B",
-  Instagram = "#4F7E82",
-  TikTok = "#78999E",
-  X = "#65747B"
-)
-
-
-incidentality_colors <- c(
-  `Gezielt gesucht` = "#315F6B",
-  `Account gefolgt, Beitrag nicht gezielt gesucht` = "#78999E",
-  `Zufällig begegnet` = "#C49A5A"
-)
-
-
-interaction_colors <- c(
-  `Gründlich gelesen/angeschaut` = "#315F6B",
-  `Weiter informiert` = "#78999E",
-  `Sichtbar interagiert` = "#C49A5A"
-)
-
-
-format_colors <- c(
-  Text = "#315F6B",
-  Bild = "#78999E",
-  Video = "#C49A5A",
-  `Mischform/unklar` = "#B8C2C5"
-)
-
-
 theme_project <- function(base_size = 12) {
-  
-  theme_minimal(
-    base_size = base_size
-  ) +
+  theme_minimal(base_size = base_size) +
     theme(
       plot.background = element_rect(
-        fill = project_colors["white"],
+        fill = unname(project_colors["white"]),
         color = NA
       ),
-      
       panel.background = element_rect(
-        fill = project_colors["white"],
+        fill = unname(project_colors["white"]),
         color = NA
       ),
-      
       plot.title = element_text(
-        color = project_colors["dark"],
+        color = unname(project_colors["dark"]),
         face = "bold",
-        size = rel(1.25),
-        margin = margin(
-          b = 5
-        )
+        size = rel(1.22),
+        margin = margin(b = 5)
       ),
-      
       plot.subtitle = element_text(
-        color = project_colors["medium"],
-        size = rel(0.95),
-        margin = margin(
-          b = 12
-        )
+        color = unname(project_colors["medium"]),
+        margin = margin(b = 11)
       ),
-      
       plot.caption = element_text(
-        color = project_colors["medium"],
-        size = rel(0.8),
+        color = unname(project_colors["medium"]),
+        size = rel(0.80),
         hjust = 0,
-        margin = margin(
-          t = 10
-        )
+        margin = margin(t = 10)
       ),
-      
       axis.title = element_text(
-        color = project_colors["dark"],
+        color = unname(project_colors["dark"]),
         face = "bold"
       ),
-      
       axis.text = element_text(
-        color = project_colors["dark"]
+        color = unname(project_colors["dark"])
       ),
-      
       axis.ticks = element_blank(),
-      
       panel.grid.major.x = element_blank(),
-      
       panel.grid.major.y = element_line(
-        color = project_colors["grid"],
+        color = unname(project_colors["grid"]),
         linewidth = 0.4
       ),
-      
       panel.grid.minor = element_blank(),
-      
       strip.background = element_rect(
-        fill = project_colors["light"],
+        fill = unname(project_colors["light"]),
         color = NA
       ),
-      
       strip.text = element_text(
-        color = project_colors["dark"],
-        face = "bold",
-        margin = margin(
-          7,
-          7,
-          7,
-          7
-        )
+        color = unname(project_colors["dark"]),
+        face = "bold"
       ),
-      
       legend.position = "bottom",
-      
-      legend.title = element_blank(),
-      
-      legend.text = element_text(
-        color = project_colors["dark"]
-      ),
-      
-      plot.margin = margin(
-        15,
-        22,
-        15,
-        15
-      )
+      plot.margin = margin(15, 24, 15, 15)
     )
 }
 
 
-theme_set(
-  theme_project()
-)
-
-
-percent_labels <- scales::label_number(
-  accuracy = 1,
-  suffix = " %",
-  decimal.mark = ","
-)
+theme_set(theme_project())
 
 
 save_project_plot <- function(
@@ -1132,1897 +3116,747 @@ save_project_plot <- function(
     width = 8,
     height = 5
 ) {
-  
   ggsave(
-    filename = file.path(
-      figure_folder,
-      filename
-    ),
+    filename = file.path(figure_folder, filename),
     plot = plot,
     width = width,
     height = height,
     dpi = 300,
-    bg = project_colors["white"]
+    bg = unname(project_colors["white"])
   )
 }
 
 
-#===============================================================================
-# 09 Load coding data
-#===============================================================================
-
-if (!file.exists(coding_file)) {
-  
-  stop(
-    "Die Coding-Datei wurde nicht gefunden: ",
-    coding_file
-  )
+simulation_caption <- if (simulate_coding) {
+  "Achtung: Manuelle Codierspalten wurden simuliert. Keine inhaltliche Interpretation."
+} else {
+  NULL
 }
 
 
-coding_raw <- readxl::read_excel(
-  coding_file,
-  sheet = "Coding"
-) %>%
-  janitor::clean_names()
-
-
 #===============================================================================
-# 10 Check required variables
+# 20 Figures: participation and main distributions
 #===============================================================================
 
-required_variables <- c(
-  "screenshot_id",
-  "participant",
-  "study_day",
-  "photo",
-  "filename",
-  "topic_coded",
-  "source_coded",
-  "source_name_coded",
-  "platform_coded",
-  "media_format",
-  "coding_completed",
-  "incidentality_label",
-  "interaction_read",
-  "interaction_research",
-  "interaction_engagement",
-  "locality_label",
-  "situation_label"
+figure_posts_participant <- ggplot(
+  participant_counts,
+  aes(x = N_Screenshots)
+) +
+  geom_histogram(
+    binwidth = 1,
+    boundary = 0.5,
+    fill = unname(project_colors["primary"]),
+    color = unname(project_colors["white"]),
+    linewidth = 0.4
+  ) +
+  geom_vline(
+    xintercept = minimum_screenshots,
+    color = unname(project_colors["accent"]),
+    linewidth = 0.9,
+    linetype = "22"
+  ) +
+  labs(
+    title = "Anzahl codierter Beiträge pro Person",
+    subtitle = paste0(
+      "N = ",
+      nrow(participant_counts),
+      " Teilnehmende; gestrichelte Linie = Einschlussgrenze"
+    ),
+    x = "Anzahl der Beiträge",
+    y = "Anzahl der Teilnehmenden",
+    caption = simulation_caption
+  )
+
+save_project_plot(
+  figure_posts_participant,
+  "Daily_Posts_Per_Participant.png"
 )
 
-missing_variables <- setdiff(
-  required_variables,
-  names(coding_raw)
+
+figure_posts_day <- ggplot(
+  day_summary,
+  aes(
+    x = factor(study_day),
+    y = Total_Posts
+  )
+) +
+  geom_col(
+    width = 0.66,
+    fill = unname(project_colors["primary"])
+  ) +
+  geom_text(
+    aes(label = Total_Posts),
+    vjust = -0.35,
+    fontface = "bold",
+    color = unname(project_colors["dark"])
+  ) +
+  scale_y_continuous(
+    breaks = scales::breaks_pretty(),
+    expand = expansion(mult = c(0, 0.13))
+  ) +
+  labs(
+    title = "Beiträge nach Studientag",
+    subtitle = "Absolute Zahl der codierten Beiträge",
+    x = "Studientag",
+    y = "Anzahl der Beiträge",
+    caption = simulation_caption
+  )
+
+save_project_plot(
+  figure_posts_day,
+  "Daily_Posts_By_Day.png"
 )
 
-if (length(missing_variables) > 0) {
-  
-  stop(
-    paste0(
-      "Folgende Variablen fehlen in der Coding-Datei:\n- ",
-      paste(
-        missing_variables,
-        collapse = "\n- "
-      )
-    )
-  )
-}
 
-
-#===============================================================================
-# 11 Prepare coding data
-#===============================================================================
-
-daily_all <- coding_raw %>%
-  transmute(
-    screenshot_id = clean_text(
-      screenshot_id
-    ),
-    
-    participant = clean_text(
-      participant
-    ),
-    
-    study_day = clean_numeric(
-      study_day
-    ),
-    
-    photo = clean_numeric(
-      photo
-    ),
-    
-    filename = clean_text(
-      filename
-    ),
-    
-    filepath = if (
-      "filepath" %in% names(coding_raw)
-    ) {
-      clean_text(filepath)
-    } else {
-      NA_character_
-    },
-    
-    file_exists = if (
-      "file_exists" %in% names(coding_raw)
-    ) {
-      clean_binary(file_exists)
-    } else {
-      NA
-    },
-    
-    topic = clean_text(
-      topic_coded
-    ),
-    
-    source_type = clean_text(
-      source_coded
-    ),
-    
-    source_name = clean_text(
-      source_name_coded
-    ),
-    
-    platform = normalize_platform(
-      platform_coded
-    ),
-    
-    platform_reported = if (
-      "platform_reported" %in%
-      names(coding_raw)
-    ) {
-      normalize_platform(
-        platform_reported
-      )
-    } else {
-      NA_character_
-    },
-    
-    media_format = normalize_format(
-      media_format
-    ),
-    
-    incidentality = normalize_incidentality(
-      label = incidentality_label,
-      code = if (
-        "incidentality_code" %in%
-        names(coding_raw)
-      ) {
-        incidentality_code
-      } else {
-        NA
-      }
-    ),
-    
-    interaction_read = clean_binary(
-      interaction_read
-    ),
-    
-    interaction_research = clean_binary(
-      interaction_research
-    ),
-    
-    interaction_engagement = clean_binary(
-      interaction_engagement
-    ),
-    
-    locality = normalize_locality(
-      label = locality_label,
-      code = if (
-        "locality_code" %in%
-        names(coding_raw)
-      ) {
-        locality_code
-      } else {
-        NA
-      }
-    ),
-    
-    situation = normalize_situation(
-      label = situation_label,
-      code = if (
-        "situation_code" %in%
-        names(coding_raw)
-      ) {
-        situation_code
-      } else {
-        NA
-      }
-    ),
-    
-    coding_completed = clean_binary(
-      coding_completed
-    ),
-    
-    coder = if (
-      "coder" %in% names(coding_raw)
-    ) {
-      clean_text(coder)
-    } else {
-      NA_character_
-    },
-    
-    coding_date = if (
-      "coding_date" %in% names(coding_raw)
-    ) {
-      coding_date
-    } else {
-      NA
-    },
-    
-    notes = if (
-      "notes" %in% names(coding_raw)
-    ) {
-      clean_text(notes)
-    } else {
-      NA_character_
-    },
-    
-    scheduled = if (
-      "scheduled" %in% names(coding_raw)
-    ) {
-      scheduled
-    } else {
-      NA
-    }
-  )
-
-
-#===============================================================================
-# 12 Coding quality checks
-#===============================================================================
-
-daily_all <- daily_all %>%
-  mutate(
-    required_coding_complete =
-      !is.na(topic) &
-      !is.na(source_type) &
-      !is.na(source_name) &
-      !is.na(platform) &
-      !is.na(media_format),
-    
-    platform_mismatch =
-      !is.na(platform) &
-      !is.na(platform_reported) &
-      platform != platform_reported
-  )
-
-
-duplicate_screenshot_ids <- daily_all %>%
-  filter(
-    !is.na(screenshot_id)
-  ) %>%
-  count(
-    screenshot_id,
-    name = "Number_of_Rows"
-  ) %>%
-  filter(
-    Number_of_Rows > 1
-  )
-
-
-duplicate_filenames <- daily_all %>%
-  filter(
-    !is.na(filename)
-  ) %>%
-  count(
+plot_horizontal_counts <- function(
+    distribution_data,
+    title,
+    subtitle,
     filename,
-    name = "Number_of_Rows"
-  ) %>%
-  filter(
-    Number_of_Rows > 1
-  )
-
-
-incomplete_coding <- daily_all %>%
-  filter(
-    !coding_completed |
-      !required_coding_complete |
-      is.na(coding_completed)
-  )
-
-
-platform_mismatches <- daily_all %>%
-  filter(
-    platform_mismatch
-  ) %>%
-  select(
-    screenshot_id,
-    participant,
-    filename,
-    platform_reported,
-    platform
-  )
-
-
-topic_variants <- category_variant_check(
-  daily_all,
-  "topic"
-)
-
-source_type_variants <- category_variant_check(
-  daily_all,
-  "source_type"
-)
-
-
-coding_quality_summary <- tibble(
-  Indicator = c(
-    "Zeilen in Coding-Datei",
-    "Eindeutige Screenshot-IDs",
-    "Doppelte Screenshot-IDs",
-    "Doppelte Dateinamen",
-    "Coding als abgeschlossen markiert",
-    "Pflichtcodes vollständig",
-    "Unvollständige oder nicht abgeschlossene Zeilen",
-    "Abweichungen zwischen berichteter und codierter Plattform",
-    "Nicht gefundene Dateien"
-  ),
-  
-  Value = c(
-    nrow(daily_all),
-    
-    n_distinct(
-      daily_all$screenshot_id
-    ),
-    
-    nrow(
-      duplicate_screenshot_ids
-    ),
-    
-    nrow(
-      duplicate_filenames
-    ),
-    
-    sum(
-      daily_all$coding_completed,
-      na.rm = TRUE
-    ),
-    
-    sum(
-      daily_all$required_coding_complete,
-      na.rm = TRUE
-    ),
-    
-    nrow(
-      incomplete_coding
-    ),
-    
-    nrow(
-      platform_mismatches
-    ),
-    
-    sum(
-      daily_all$file_exists %in% FALSE,
-      na.rm = TRUE
-    )
-  )
-)
-
-
-if (
-  strict_coding_check &&
-  nrow(incomplete_coding) > 0
+    width = 10,
+    height = 7
 ) {
-  
-  stop(
-    paste0(
-      nrow(incomplete_coding),
-      " Zeilen sind nicht vollständig codiert oder nicht als abgeschlossen ",
-      "markiert. Siehe Objekt 'incomplete_coding'."
-    )
-  )
-}
-
-
-if (nrow(duplicate_screenshot_ids) > 0) {
-  
-  stop(
-    "Die Coding-Datei enthält doppelte Screenshot-IDs."
-  )
-}
-
-
-#===============================================================================
-# 13 Select completely coded rows
-#===============================================================================
-
-daily_coded <- daily_all %>%
-  filter(
-    coding_completed,
-    required_coding_complete
-  )
-
-
-#===============================================================================
-# 14 Apply optional screening filter
-#===============================================================================
-
-screening_filter_applied <- FALSE
-participants_not_in_screening <- tibble()
-
-if (
-  apply_screening_filter &&
-  file.exists(screening_file)
-) {
-  
-  screening <- readRDS(
-    screening_file
-  ) %>%
-    janitor::clean_names()
-  
-  screening_participant_variable <- c(
-    "personal_participant_code",
-    "personalparticipantcode",
-    "participant"
-  )
-  
-  screening_participant_variable <-
-    screening_participant_variable[
-      screening_participant_variable %in%
-        names(screening)
-    ][1]
-  
-  if (
-    length(screening_participant_variable) == 1 &&
-    !is.na(screening_participant_variable)
-  ) {
-    
-    valid_screening_codes <- screening %>%
-      transmute(
-        participant = clean_text(
-          .data[[
-            screening_participant_variable
-          ]]
-        )
-      ) %>%
-      filter(
-        !is.na(participant)
-      ) %>%
-      distinct(
-        participant
-      )
-    
-    participants_not_in_screening <- daily_coded %>%
-      distinct(
-        participant
-      ) %>%
-      anti_join(
-        valid_screening_codes,
-        by = "participant"
-      )
-    
-    daily_coded <- daily_coded %>%
-      semi_join(
-        valid_screening_codes,
-        by = "participant"
-      )
-    
-    screening_filter_applied <- TRUE
-  }
-}
-
-
-#===============================================================================
-# 15 Apply preregistered screenshot criterion
-#===============================================================================
-
-participant_counts_before_filter <- daily_coded %>%
-  count(
-    participant,
-    name = "N_Screenshots"
-  ) %>%
-  mutate(
-    Included =
-      N_Screenshots >=
-      minimum_screenshots
-  )
-
-
-included_participants <- participant_counts_before_filter %>%
-  filter(
-    Included
-  ) %>%
-  pull(
-    participant
-  )
-
-
-excluded_participants <- participant_counts_before_filter %>%
-  filter(
-    !Included
-  )
-
-
-daily <- daily_coded %>%
-  filter(
-    participant %in%
-      included_participants
-  )
-
-
-if (nrow(daily) == 0) {
-  
-  stop(
-    "Nach Anwendung der Einschlusskriterien verbleiben keine Screenshots."
-  )
-}
-
-
-#===============================================================================
-# 16 Create derived variables
-#===============================================================================
-
-daily <- daily %>%
-  mutate(
-    participant = factor(
-      participant
-    ),
-    
-    platform = factor(
-      platform,
-      levels = c(
-        "Facebook",
-        "Instagram",
-        "TikTok",
-        "X"
-      )
-    ),
-    
-    incidentality = factor(
-      incidentality,
-      levels = c(
-        "Gezielt gesucht",
-        "Account gefolgt, Beitrag nicht gezielt gesucht",
-        "Zufällig begegnet"
-      )
-    ),
-    
-    locality = factor(
-      locality,
-      levels = c(
-        "Zu Hause",
-        "Unterwegs",
-        "Weiß nicht mehr"
-      )
-    ),
-    
-    situation = factor(
-      situation,
-      levels = c(
-        "Allein",
-        "Gemeinsam mit anderen",
-        "Weiß nicht mehr"
-      )
-    ),
-    
-    media_format = factor(
-      media_format,
-      levels = c(
-        "Text",
-        "Bild",
-        "Video",
-        "Mischform/unklar"
-      )
-    ),
-    
-    incidentality_strict = case_when(
-      is.na(incidentality) ~ NA,
-      incidentality ==
-        "Zufällig begegnet" ~ TRUE,
-      TRUE ~ FALSE
-    ),
-    
-    incidentality_broad = case_when(
-      is.na(incidentality) ~ NA,
-      
-      incidentality %in% c(
-        "Account gefolgt, Beitrag nicht gezielt gesucht",
-        "Zufällig begegnet"
-      ) ~ TRUE,
-      
-      TRUE ~ FALSE
-    ),
-    
-    number_of_practices = rowSums(
-      cbind(
-        interaction_read,
-        interaction_research,
-        interaction_engagement
-      ),
-      na.rm = TRUE
-    ),
-    
-    all_interactions_missing =
-      is.na(interaction_read) &
-      is.na(interaction_research) &
-      is.na(interaction_engagement),
-    
-    number_of_practices = if_else(
-      all_interactions_missing,
-      NA_real_,
-      number_of_practices
-    )
-  )
-
-
-#===============================================================================
-# 17 Sample and participation overview
-#===============================================================================
-
-screenshots_per_participant <- daily %>%
-  group_by(
-    participant
-  ) %>%
-  summarise(
-    N_Screenshots = n(),
-    
-    N_Active_Days = n_distinct(
-      study_day
-    ),
-    
-    Mean_Screenshots_per_Active_Day =
-      N_Screenshots /
-      N_Active_Days,
-    
-    First_Study_Day = min(
-      study_day,
-      na.rm = TRUE
-    ),
-    
-    Last_Study_Day = max(
-      study_day,
-      na.rm = TRUE
-    ),
-    
-    .groups = "drop"
-  )
-
-
-screenshots_per_day <- daily %>%
-  group_by(
-    study_day
-  ) %>%
-  summarise(
-    N_Screenshots = n(),
-    
-    N_Participants = n_distinct(
-      participant
-    ),
-    
-    Mean_Screenshots_per_Active_Participant =
-      N_Screenshots /
-      N_Participants,
-    
-    .groups = "drop"
-  )
-
-
-analysis_overview <- tibble(
-  Indicator = c(
-    "Screenshots vor Mindestmengenfilter",
-    "Personen vor Mindestmengenfilter",
-    "Ausgeschlossene Personen mit weniger als sieben Screenshots",
-    "Screenshots in finaler Analysestichprobe",
-    "Personen in finaler Analysestichprobe",
-    "Teilnehmertage mit mindestens einem Screenshot",
-    "Mittlere Screenshots pro Person",
-    "Median Screenshots pro Person",
-    "Mittlere aktive Tage pro Person",
-    "Screening-Filter angewendet"
-  ),
-  
-  Value = c(
-    nrow(daily_coded),
-    
-    n_distinct(
-      daily_coded$participant
-    ),
-    
-    nrow(
-      excluded_participants
-    ),
-    
-    nrow(daily),
-    
-    n_distinct(
-      daily$participant
-    ),
-    
-    n_distinct(
-      paste(
-        daily$participant,
-        daily$study_day,
-        sep = "_"
-      )
-    ),
-    
-    mean(
-      screenshots_per_participant$
-        N_Screenshots
-    ),
-    
-    median(
-      screenshots_per_participant$
-        N_Screenshots
-    ),
-    
-    mean(
-      screenshots_per_participant$
-        N_Active_Days
-    ),
-    
-    as.character(
-      screening_filter_applied
-    )
-  )
-)
-
-
-#===============================================================================
-# 18 Screenshot-weighted descriptive distributions
-#===============================================================================
-
-topic_summary <- frequency_summary(
-  daily,
-  "topic",
-  "Topic"
-)
-
-source_type_summary <- frequency_summary(
-  daily,
-  "source_type",
-  "Source-/Account-Kategorie"
-)
-
-source_name_summary <- frequency_summary(
-  daily,
-  "source_name",
-  "Source-/Account-Name"
-)
-
-platform_summary <- frequency_summary(
-  daily,
-  "platform",
-  "Plattform"
-)
-
-format_summary <- frequency_summary(
-  daily,
-  "media_format",
-  "Medienformat"
-)
-
-incidentality_summary <- frequency_summary(
-  daily,
-  "incidentality",
-  "Incidentality"
-)
-
-locality_summary <- frequency_summary(
-  daily,
-  "locality",
-  "Räumlicher Kontext"
-)
-
-situation_summary <- frequency_summary(
-  daily,
-  "situation",
-  "Sozialer Kontext"
-)
-
-practice_count_summary <- frequency_summary(
-  daily,
-  "number_of_practices",
-  "Anzahl der Praktiken"
-)
-
-
-#===============================================================================
-# 19 Screenshot-weighted interaction summaries
-#===============================================================================
-
-interaction_long <- daily %>%
-  select(
-    participant,
-    screenshot_id,
-    
-    `Gründlich gelesen/angeschaut` =
-      interaction_read,
-    
-    `Weiter informiert` =
-      interaction_research,
-    
-    `Sichtbar interagiert` =
-      interaction_engagement
-  ) %>%
-  pivot_longer(
-    cols = c(
-      `Gründlich gelesen/angeschaut`,
-      `Weiter informiert`,
-      `Sichtbar interagiert`
-    ),
-    names_to = "Practice",
-    values_to = "Selected"
-  )
-
-
-interaction_summary <- interaction_long %>%
-  group_by(
-    Practice
-  ) %>%
-  summarise(
-    N_Valid = sum(
-      !is.na(Selected)
-    ),
-    
-    N_Selected = sum(
-      Selected,
-      na.rm = TRUE
-    ),
-    
-    Percent_Selected =
-      100 * N_Selected /
-      N_Valid,
-    
-    .groups = "drop"
-  )
-
-
-incidentality_binary_summary <- tibble(
-  Definition = c(
-    "Eng: nur zufällig begegnet",
-    "Breit: nicht gezielt gesucht oder zufällig begegnet"
-  ),
-  
-  N_Valid = c(
-    sum(
-      !is.na(
-        daily$incidentality_strict
-      )
-    ),
-    
-    sum(
-      !is.na(
-        daily$incidentality_broad
-      )
-    )
-  ),
-  
-  N_Incidental = c(
-    sum(
-      daily$incidentality_strict,
-      na.rm = TRUE
-    ),
-    
-    sum(
-      daily$incidentality_broad,
-      na.rm = TRUE
-    )
-  )
-) %>%
-  mutate(
-    Percent_Incidental =
-      100 * N_Incidental /
-      N_Valid
-  )
-
-
-#===============================================================================
-# 20 Participant-weighted descriptive distributions
-#===============================================================================
-
-participant_weighted_topics <-
-  participant_weighted_category(
-    daily,
-    "topic",
-    "Topic"
-  )
-
-participant_weighted_sources <-
-  participant_weighted_category(
-    daily,
-    "source_type",
-    "Source-/Account-Kategorie"
-  )
-
-participant_weighted_platforms <-
-  participant_weighted_category(
-    daily,
-    "platform",
-    "Plattform"
-  )
-
-participant_weighted_formats <-
-  participant_weighted_category(
-    daily,
-    "media_format",
-    "Medienformat"
-  )
-
-participant_weighted_incidentality <-
-  participant_weighted_category(
-    daily,
-    "incidentality",
-    "Incidentality"
-  )
-
-participant_weighted_locality <-
-  participant_weighted_category(
-    daily,
-    "locality",
-    "Räumlicher Kontext"
-  )
-
-participant_weighted_situation <-
-  participant_weighted_category(
-    daily,
-    "situation",
-    "Sozialer Kontext"
-  )
-
-
-participant_weighted_practices <- bind_rows(
-  participant_weighted_binary(
-    daily,
-    "interaction_read",
-    "Gründlich gelesen/angeschaut"
-  ),
-  
-  participant_weighted_binary(
-    daily,
-    "interaction_research",
-    "Weiter informiert"
-  ),
-  
-  participant_weighted_binary(
-    daily,
-    "interaction_engagement",
-    "Sichtbar interagiert"
-  ),
-  
-  participant_weighted_binary(
-    daily,
-    "incidentality_strict",
-    "Incidentality, eng"
-  ),
-  
-  participant_weighted_binary(
-    daily,
-    "incidentality_broad",
-    "Incidentality, breit"
-  )
-)
-
-
-#===============================================================================
-# 21 Individual diversity measures
-#===============================================================================
-
-topic_diversity <- diversity_by_participant(
-  daily,
-  "topic",
-  "Topic"
-)
-
-source_diversity <- diversity_by_participant(
-  daily,
-  "source_type",
-  "Source"
-)
-
-platform_diversity <- diversity_by_participant(
-  daily,
-  "platform",
-  "Platform"
-)
-
-format_diversity <- diversity_by_participant(
-  daily,
-  "media_format",
-  "Format"
-)
-
-
-daily_participant <- screenshots_per_participant %>%
-  left_join(
-    topic_diversity,
-    by = "participant"
-  ) %>%
-  left_join(
-    source_diversity,
-    by = "participant"
-  ) %>%
-  left_join(
-    platform_diversity,
-    by = "participant"
-  ) %>%
-  left_join(
-    format_diversity,
-    by = "participant"
-  ) %>%
-  left_join(
-    daily %>%
-      group_by(
-        participant
-      ) %>%
-      summarise(
-        Proportion_Incidental_Strict =
-          safe_mean(
-            incidentality_strict
-          ),
-        
-        Proportion_Incidental_Broad =
-          safe_mean(
-            incidentality_broad
-          ),
-        
-        Proportion_Read_Thoroughly =
-          safe_mean(
-            interaction_read
-          ),
-        
-        Proportion_Researched_Further =
-          safe_mean(
-            interaction_research
-          ),
-        
-        Proportion_Engaged =
-          safe_mean(
-            interaction_engagement
-          ),
-        
-        Proportion_At_Home =
-          safe_mean(
-            locality == "Zu Hause"
-          ),
-        
-        Proportion_On_The_Go =
-          safe_mean(
-            locality == "Unterwegs"
-          ),
-        
-        Proportion_Alone =
-          safe_mean(
-            situation == "Allein"
-          ),
-        
-        Proportion_With_Others =
-          safe_mean(
-            situation ==
-              "Gemeinsam mit anderen"
-          ),
-        
-        Proportion_Facebook =
-          safe_mean(
-            platform == "Facebook"
-          ),
-        
-        Proportion_Instagram =
-          safe_mean(
-            platform == "Instagram"
-          ),
-        
-        Proportion_TikTok =
-          safe_mean(
-            platform == "TikTok"
-          ),
-        
-        Proportion_X =
-          safe_mean(
-            platform == "X"
-          ),
-        
-        Proportion_Text =
-          safe_mean(
-            media_format == "Text"
-          ),
-        
-        Proportion_Image =
-          safe_mean(
-            media_format == "Bild"
-          ),
-        
-        Proportion_Video =
-          safe_mean(
-            media_format == "Video"
-          ),
-        
-        .groups = "drop"
-      ),
-    by = "participant"
-  )
-
-
-participant_level_summary <- daily_participant %>%
-  select(
-    where(is.numeric)
-  ) %>%
-  pivot_longer(
-    cols = everything(),
-    names_to = "Variable",
-    values_to = "Value"
-  ) %>%
-  group_by(
-    Variable
-  ) %>%
-  summarise(
-    N_Valid = sum(
-      !is.na(Value)
-    ),
-    
-    Mean = mean(
-      Value,
-      na.rm = TRUE
-    ),
-    
-    SD = sd(
-      Value,
-      na.rm = TRUE
-    ),
-    
-    Median = median(
-      Value,
-      na.rm = TRUE
-    ),
-    
-    Minimum = min(
-      Value,
-      na.rm = TRUE
-    ),
-    
-    Maximum = max(
-      Value,
-      na.rm = TRUE
-    ),
-    
-    .groups = "drop"
-  )
-
-
-#===============================================================================
-# 22 Preregistered and exploratory cross tables
-#===============================================================================
-
-topic_by_platform <- cross_table(
-  daily,
-  "topic",
-  "platform"
-)
-
-source_by_platform <- cross_table(
-  daily,
-  "source_type",
-  "platform"
-)
-
-format_by_platform <- cross_table(
-  daily,
-  "media_format",
-  "platform"
-)
-
-incidentality_by_platform <- cross_table(
-  daily,
-  "platform",
-  "incidentality"
-)
-
-topic_by_incidentality <- cross_table(
-  daily,
-  "topic",
-  "incidentality"
-)
-
-source_by_incidentality <- cross_table(
-  daily,
-  "source_type",
-  "incidentality"
-)
-
-format_by_incidentality <- cross_table(
-  daily,
-  "media_format",
-  "incidentality"
-)
-
-locality_by_incidentality <- cross_table(
-  daily,
-  "locality",
-  "incidentality"
-)
-
-situation_by_incidentality <- cross_table(
-  daily,
-  "situation",
-  "incidentality"
-)
-
-
-#===============================================================================
-# 23 Interaction rates by content and context
-#===============================================================================
-
-interactions_by_topic <- group_interaction_rates(
-  daily,
-  "topic"
-)
-
-interactions_by_source <- group_interaction_rates(
-  daily,
-  "source_type"
-)
-
-interactions_by_platform <- group_interaction_rates(
-  daily,
-  "platform"
-)
-
-interactions_by_format <- group_interaction_rates(
-  daily,
-  "media_format"
-)
-
-interactions_by_incidentality <- group_interaction_rates(
-  daily,
-  "incidentality"
-)
-
-interactions_by_locality <- group_interaction_rates(
-  daily,
-  "locality"
-)
-
-interactions_by_situation <- group_interaction_rates(
-  daily,
-  "situation"
-)
-
-
-#===============================================================================
-# 24 Optional exploratory multilevel models
-#===============================================================================
-
-prepare_model_data <- function(data) {
-  
-  data %>%
+  plot_data <- distribution_data %>%
+    filter(Category != "Missing") %>%
     mutate(
-      incidentality_model = forcats::fct_relevel(
-        incidentality,
-        "Gezielt gesucht"
-      ),
-      
-      locality_model = case_when(
-        locality == "Zu Hause" ~ "Zu Hause",
-        locality == "Unterwegs" ~ "Unterwegs",
-        TRUE ~ NA_character_
-      ),
-      
-      locality_model = factor(
-        locality_model,
-        levels = c(
-          "Zu Hause",
-          "Unterwegs"
-        )
-      ),
-      
-      situation_model = case_when(
-        situation == "Allein" ~ "Allein",
-        
-        situation ==
-          "Gemeinsam mit anderen" ~
-          "Gemeinsam mit anderen",
-        
-        TRUE ~ NA_character_
-      ),
-      
-      situation_model = factor(
-        situation_model,
-        levels = c(
-          "Allein",
-          "Gemeinsam mit anderen"
-        )
-      ),
-      
-      platform_model = forcats::fct_relevel(
-        platform,
-        "Facebook"
-      ),
-      
-      format_model = forcats::fct_relevel(
-        media_format,
-        "Text"
-      )
-    )
-}
-
-
-fit_exploratory_model <- function(
-    data,
-    outcome
-) {
-  
-  candidate_predictors <- c(
-    "incidentality_model",
-    "locality_model",
-    "situation_model",
-    "platform_model",
-    "format_model"
-  )
-  
-  valid_predictors <- candidate_predictors[
-    purrr::map_lgl(
-      candidate_predictors,
-      function(variable) {
-        
-        dplyr::n_distinct(
-          na.omit(
-            data[[variable]]
-          )
-        ) >= 2
-      }
-    )
-  ]
-  
-  required_model_variables <- c(
-    outcome,
-    "participant",
-    valid_predictors
-  )
-  
-  model_data <- data %>%
-    select(
-      all_of(
-        required_model_variables
-      )
-    ) %>%
-    drop_na()
-  
-  if (
-    nrow(model_data) < 30 ||
-    n_distinct(
-      model_data[[outcome]]
-    ) < 2 ||
-    n_distinct(
-      model_data$participant
-    ) < 3 ||
-    length(valid_predictors) == 0
-  ) {
-    
-    return(
-      list(
-        model = NULL,
-        
-        results = tibble(
-          Outcome = outcome,
-          Term = NA_character_,
-          Odds_Ratio = NA_real_,
-          CI95_Lower = NA_real_,
-          CI95_Upper = NA_real_,
-          P_Value = NA_real_,
-          N = nrow(model_data),
-          Note =
-            "Modell wegen unzureichender Daten oder Varianz nicht geschätzt."
-        )
-      )
-    )
-  }
-  
-  formula_text <- paste0(
-    outcome,
-    " ~ ",
-    paste(
-      valid_predictors,
-      collapse = " + "
-    ),
-    " + (1 | participant)"
-  )
-  
-  model <- tryCatch(
-    lme4::glmer(
-      formula = as.formula(
-        formula_text
-      ),
-      
-      data = model_data,
-      
-      family = binomial(),
-      
-      control = lme4::glmerControl(
-        optimizer = "bobyqa",
-        optCtrl = list(
-          maxfun = 200000
-        )
-      )
-    ),
-    
-    error = function(e) {
-      warning(
-        "Modell für ",
-        outcome,
-        " konnte nicht geschätzt werden: ",
-        conditionMessage(e)
-      )
-      
-      NULL
-    }
-  )
-  
-  if (is.null(model)) {
-    
-    return(
-      list(
-        model = NULL,
-        
-        results = tibble(
-          Outcome = outcome,
-          Term = NA_character_,
-          Odds_Ratio = NA_real_,
-          CI95_Lower = NA_real_,
-          CI95_Upper = NA_real_,
-          P_Value = NA_real_,
-          N = nrow(model_data),
-          Note =
-            "Modell konnte nicht geschätzt werden."
-        )
-      )
-    )
-  }
-  
-  results <- broom.mixed::tidy(
-    model,
-    effects = "fixed",
-    conf.int = TRUE,
-    exponentiate = TRUE
-  ) %>%
-    transmute(
-      Outcome = outcome,
-      Term = term,
-      Odds_Ratio = estimate,
-      CI95_Lower = conf.low,
-      CI95_Upper = conf.high,
-      P_Value = p.value,
-      N = nrow(model_data),
-      Note = "Exploratives logistisches Mehrebenenmodell"
+      Category = forcats::fct_reorder(Category, N)
     )
   
-  list(
-    model = model,
-    results = results
+  plot <- ggplot(
+    plot_data,
+    aes(
+      x = N,
+      y = Category
+    )
+  ) +
+    geom_col(
+      width = 0.68,
+      fill = unname(project_colors["primary"])
+    ) +
+    geom_text(
+      aes(label = N),
+      hjust = -0.18,
+      fontface = "bold",
+      color = unname(project_colors["dark"]),
+      size = 3.3
+    ) +
+    scale_x_continuous(
+      breaks = scales::breaks_pretty(),
+      expand = expansion(mult = c(0, 0.14))
+    ) +
+    coord_cartesian(clip = "off") +
+    labs(
+      title = title,
+      subtitle = subtitle,
+      x = "Anzahl der Beiträge",
+      y = NULL,
+      caption = simulation_caption
+    ) +
+    theme(
+      panel.grid.major.x = element_line(
+        color = unname(project_colors["grid"]),
+        linewidth = 0.4
+      ),
+      panel.grid.major.y = element_blank()
+    )
+  
+  save_project_plot(
+    plot,
+    filename,
+    width = width,
+    height = height
   )
 }
 
 
-exploratory_model_results <- tibble(
-  Note = "Explorative Modelle wurden deaktiviert."
+plot_horizontal_counts(
+  topic_distribution,
+  "Themen der Beiträge",
+  "Screenshot-gewichtete absolute Häufigkeiten",
+  "Daily_Topics.png",
+  width = 11,
+  height = 8
 )
 
-exploratory_models <- list()
+plot_horizontal_counts(
+  source_distribution,
+  "Quellen- und Accounttypen",
+  "Screenshot-gewichtete absolute Häufigkeiten",
+  "Daily_Sources.png",
+  width = 11,
+  height = 7
+)
 
+plot_horizontal_counts(
+  platform_distribution,
+  "Plattformen der Beiträge",
+  "Screenshot-gewichtete absolute Häufigkeiten",
+  "Daily_Platforms.png",
+  width = 8,
+  height = 5
+)
 
-if (run_exploratory_models) {
-  
-  model_data <- prepare_model_data(
-    daily
-  )
-  
-  model_read <- fit_exploratory_model(
-    model_data,
-    "interaction_read"
-  )
-  
-  model_research <- fit_exploratory_model(
-    model_data,
-    "interaction_research"
-  )
-  
-  model_engagement <- fit_exploratory_model(
-    model_data,
-    "interaction_engagement"
-  )
-  
-  exploratory_models <- list(
-    interaction_read =
-      model_read$model,
-    
-    interaction_research =
-      model_research$model,
-    
-    interaction_engagement =
-      model_engagement$model
-  )
-  
-  exploratory_model_results <- bind_rows(
-    model_read$results,
-    model_research$results,
-    model_engagement$results
-  )
-  
-  saveRDS(
-    exploratory_models,
-    model_rds
-  )
-}
+plot_horizontal_counts(
+  format_distribution,
+  "Medienformate der Beiträge",
+  "Screenshot-gewichtete absolute Häufigkeiten",
+  "Daily_Formats.png",
+  width = 8,
+  height = 5
+)
+
+plot_horizontal_counts(
+  incidentality_distribution,
+  "Art der Informationsbegegnung",
+  "Screenshot-gewichtete absolute Häufigkeiten",
+  "Daily_Incidentality.png",
+  width = 9,
+  height = 5
+)
 
 
 #===============================================================================
-# 25 Save prepared analysis datasets
+# 21 Figures: interactions and contexts
+#===============================================================================
+
+figure_interactions <- ggplot(
+  interaction_distribution,
+  aes(
+    x = Percent_Yes,
+    y = forcats::fct_reorder(Interaction, Percent_Yes)
+  )
+) +
+  geom_col(
+    width = 0.66,
+    fill = unname(project_colors["primary"])
+  ) +
+  geom_text(
+    aes(
+      label = paste0(
+        N_Yes,
+        " (",
+        scales::number(Percent_Yes, accuracy = 0.1, decimal.mark = ","),
+        " %)"
+      )
+    ),
+    hjust = -0.12,
+    fontface = "bold",
+    color = unname(project_colors["dark"]),
+    size = 3.2
+  ) +
+  scale_x_continuous(
+    limits = c(0, 105),
+    breaks = seq(0, 100, 20),
+    labels = label_percent(scale = 1),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  coord_cartesian(clip = "off") +
+  labs(
+    title = "Auswahl- und Interaktionspraktiken",
+    subtitle = "Anteile an allen jeweils gültigen Beitragsangaben",
+    x = "Anteil der Beiträge",
+    y = NULL,
+    caption = simulation_caption
+  ) +
+  theme(
+    panel.grid.major.x = element_line(
+      color = unname(project_colors["grid"]),
+      linewidth = 0.4
+    ),
+    panel.grid.major.y = element_blank()
+  )
+
+save_project_plot(
+  figure_interactions,
+  "Daily_Interactions.png",
+  width = 10,
+  height = 5.5
+)
+
+
+contexts_plot_data <- bind_rows(
+  locality_distribution %>%
+    filter(Category != "Missing") %>%
+    mutate(Context_Dimension = "Räumlich"),
+  situation_distribution %>%
+    filter(Category != "Missing") %>%
+    mutate(Context_Dimension = "Sozial")
+)
+
+figure_contexts <- ggplot(
+  contexts_plot_data,
+  aes(
+    x = N,
+    y = Category,
+    fill = Context_Dimension
+  )
+) +
+  geom_col(width = 0.66) +
+  geom_text(
+    aes(label = N),
+    hjust = -0.18,
+    fontface = "bold",
+    color = unname(project_colors["dark"])
+  ) +
+  facet_wrap(
+    ~ Context_Dimension,
+    scales = "free_y",
+    ncol = 2
+  ) +
+  scale_fill_manual(
+    values = c(
+      Räumlich = unname(project_colors["primary"]),
+      Sozial = unname(project_colors["accent"])
+    )
+  ) +
+  scale_x_continuous(
+    breaks = scales::breaks_pretty(),
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  coord_cartesian(clip = "off") +
+  guides(fill = "none") +
+  labs(
+    title = "Situative Nutzungskontexte",
+    subtitle = "Absolute Häufigkeiten auf Beitragsebene",
+    x = "Anzahl der Beiträge",
+    y = NULL,
+    caption = simulation_caption
+  ) +
+  theme(
+    panel.grid.major.x = element_line(
+      color = unname(project_colors["grid"]),
+      linewidth = 0.4
+    ),
+    panel.grid.major.y = element_blank()
+  )
+
+save_project_plot(
+  figure_contexts,
+  "Daily_Contexts.png",
+  width = 11,
+  height = 5.5
+)
+
+
+#===============================================================================
+# 22 Figures: content patterns and exploration
+#===============================================================================
+
+heatmap_topic_platform <- topic_by_platform %>%
+  group_by(Column) %>%
+  mutate(
+    Platform_Percent = 100 * N / sum(N)
+  ) %>%
+  ungroup()
+
+figure_topic_platform <- ggplot(
+  heatmap_topic_platform,
+  aes(
+    x = Column,
+    y = Row,
+    fill = Platform_Percent
+  )
+) +
+  geom_tile(
+    color = unname(project_colors["white"]),
+    linewidth = 0.5
+  ) +
+  geom_text(
+    aes(
+      label = if_else(
+        Platform_Percent >= 2,
+        paste0(round(Platform_Percent), "%"),
+        ""
+      )
+    ),
+    size = 3
+  ) +
+  scale_fill_gradient(
+    low = unname(project_colors["white"]),
+    high = unname(project_colors["primary"])
+  ) +
+  labs(
+    title = "Themenprofile der Plattformen",
+    subtitle = "Spaltenprozente innerhalb jeder Plattform",
+    x = NULL,
+    y = NULL,
+    fill = "Anteil",
+    caption = simulation_caption
+  ) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "right"
+  )
+
+save_project_plot(
+  figure_topic_platform,
+  "Daily_Topic_Platform_Heatmap.png",
+  width = 10,
+  height = 8
+)
+
+
+interaction_incidentality_plot_data <- interaction_by_groups %>%
+  filter(Grouping_Variable == "Incidentality")
+
+figure_interaction_incidentality <- ggplot(
+  interaction_incidentality_plot_data,
+  aes(
+    x = Group,
+    y = Percent_Yes,
+    fill = Outcome
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.76),
+    width = 0.70
+  ) +
+  scale_y_continuous(
+    limits = c(0, 100),
+    breaks = seq(0, 100, 20),
+    labels = label_percent(scale = 1)
+  ) +
+  labs(
+    title = "Interaktion nach Art der Informationsbegegnung",
+    subtitle = "Deskriptive Anteile auf Beitragsebene",
+    x = NULL,
+    y = "Anteil der Beiträge",
+    fill = NULL,
+    caption = simulation_caption
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 15, hjust = 1)
+  )
+
+save_project_plot(
+  figure_interaction_incidentality,
+  "Daily_Interactions_By_Incidentality.png",
+  width = 11,
+  height = 6
+)
+
+
+figure_topic_need_correlations <- ggplot(
+  topic_need_correlations,
+  aes(
+    x = Need,
+    y = Topic,
+    fill = Spearman_Rho
+  )
+) +
+  geom_tile(
+    color = unname(project_colors["white"]),
+    linewidth = 0.5
+  ) +
+  geom_text(
+    aes(
+      label = if_else(
+        is.na(Spearman_Rho),
+        "",
+        scales::number(
+          Spearman_Rho,
+          accuracy = 0.01,
+          decimal.mark = ","
+        )
+      )
+    ),
+    size = 2.8
+  ) +
+  scale_fill_gradient2(
+    low = unname(project_colors["accent"]),
+    mid = unname(project_colors["white"]),
+    high = unname(project_colors["primary"]),
+    midpoint = 0,
+    limits = c(-1, 1)
+  ) +
+  labs(
+    title = "Informationsbedürfnisse und tatsächliche Themenwahl",
+    subtitle = "Spearman-Korrelationen zwischen Screening-Scores und personenspezifischen Topic-Anteilen",
+    x = NULL,
+    y = NULL,
+    fill = "Spearman ρ",
+    caption = paste(
+      "Explorative Analyse; keine konfirmatorischen Hypothesentests.",
+      simulation_caption %||% ""
+    )
+  ) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1),
+    legend.position = "right"
+  )
+
+save_project_plot(
+  figure_topic_need_correlations,
+  "Daily_Topic_Need_Correlations.png",
+  width = 12,
+  height = 9
+)
+
+
+incidentality_alignment_plot_data <- participant_metrics %>%
+  filter(
+    !is.na(incidentality_index),
+    !is.na(Share_Incidental_Broad)
+  )
+
+figure_incidentality_alignment <- ggplot(
+  incidentality_alignment_plot_data,
+  aes(
+    x = incidentality_index,
+    y = 100 * Share_Incidental_Broad
+  )
+) +
+  geom_point(
+    size = 2.5,
+    alpha = 0.75,
+    color = unname(project_colors["primary"])
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    linewidth = 0.8,
+    color = unname(project_colors["accent"])
+  ) +
+  scale_x_continuous(
+    limits = c(1, 5),
+    breaks = 1:5
+  ) +
+  scale_y_continuous(
+    limits = c(0, 100),
+    labels = label_percent(scale = 1)
+  ) +
+  labs(
+    title = "Allgemeine und beobachtungsnahe Inzidentalität",
+    subtitle = "Screening-Index versus personenspezifischer Anteil breit inzidenteller Beiträge",
+    x = "Incidentality-Index im Screening",
+    y = "Diary-Anteil incidental broad",
+    caption = paste(
+      "Explorative deskriptive Darstellung.",
+      simulation_caption %||% ""
+    )
+  )
+
+save_project_plot(
+  figure_incidentality_alignment,
+  "Daily_Screening_Diary_Incidentality.png",
+  width = 8,
+  height = 6
+)
+
+
+diversity_plot_data <- participant_metrics %>%
+  select(
+    participant,
+    Topic = Topic_Shannon,
+    Source = Source_Shannon,
+    Platform = Platform_Shannon,
+    Format = Format_Shannon
+  ) %>%
+  pivot_longer(
+    cols = -participant,
+    names_to = "Dimension",
+    values_to = "Shannon"
+  )
+
+figure_diversity <- ggplot(
+  diversity_plot_data,
+  aes(
+    x = Dimension,
+    y = Shannon
+  )
+) +
+  geom_boxplot(
+    width = 0.58,
+    outlier.shape = NA,
+    fill = unname(project_colors["light"]),
+    color = unname(project_colors["primary"])
+  ) +
+  geom_jitter(
+    width = 0.12,
+    alpha = 0.50,
+    size = 1.7,
+    color = unname(project_colors["dark"])
+  ) +
+  labs(
+    title = "Diversität der individuellen Informationsrepertoires",
+    subtitle = "Shannon-Entropie auf Personenebene",
+    x = NULL,
+    y = "Shannon-Entropie",
+    caption = simulation_caption
+  )
+
+save_project_plot(
+  figure_diversity,
+  "Daily_Participant_Diversity.png",
+  width = 8,
+  height = 6
+)
+
+
+need_alignment_plot_data <- participant_metrics %>%
+  filter(!is.na(Need_Content_Alignment))
+
+figure_need_alignment <- ggplot(
+  need_alignment_plot_data,
+  aes(x = Need_Content_Alignment)
+) +
+  geom_histogram(
+    binwidth = 0.20,
+    boundary = -1,
+    fill = unname(project_colors["primary"]),
+    color = unname(project_colors["white"]),
+    linewidth = 0.4
+  ) +
+  geom_vline(
+    xintercept = safe_mean(need_alignment_plot_data$Need_Content_Alignment),
+    color = unname(project_colors["accent"]),
+    linetype = "22",
+    linewidth = 0.9
+  ) +
+  scale_x_continuous(
+    limits = c(-1, 1),
+    breaks = seq(-1, 1, 0.5)
+  ) +
+  labs(
+    title = "Übereinstimmung von Informationsbedürfnissen und Diary-Profil",
+    subtitle = "Personeninterne Rangkorrelation über vier Bedürfnis-/Inhaltsproxys",
+    x = "Profil-Übereinstimmung (Spearman ρ)",
+    y = "Anzahl der Teilnehmenden",
+    caption = paste(
+      "Stark explorativer zusammengesetzter Indikator; soziales Bedürfnis wird durch Peer-Quellen approximiert.",
+      simulation_caption %||% ""
+    )
+  )
+
+save_project_plot(
+  figure_need_alignment,
+  "Daily_Need_Content_Alignment.png",
+  width = 9,
+  height = 6
+)
+
+
+#===============================================================================
+# 23 Save prepared data and model objects
 #===============================================================================
 
 saveRDS(
   daily,
-  screenshot_rds
+  output_screenshot_rds
 )
 
 saveRDS(
-  daily_participant,
-  participant_rds
+  participant_metrics,
+  output_participant_rds
+)
+
+saveRDS(
+  list(
+    models = model_objects,
+    status = model_status,
+    coefficients = model_coefficients,
+    simulated = simulate_coding
+  ),
+  output_models_rds
 )
 
 
 #===============================================================================
-# 26 Export Excel workbook
+# 24 Create Excel workbook
 #===============================================================================
 
 workbook <- openxlsx::createWorkbook()
 
 header_style <- openxlsx::createStyle(
-  fontColour = "#FFFFFF",
-  fgFill = "#315F6B",
   textDecoration = "bold",
   halign = "center",
   valign = "center",
+  fgFill = "#E8EFF1",
   border = "Bottom"
 )
 
-
-add_excel_sheet(
-  workbook,
-  "Analysis_Overview",
-  analysis_overview,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Coding_Quality",
-  coding_quality_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Incomplete_Coding",
-  incomplete_coding,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Duplicate_IDs",
-  duplicate_screenshot_ids,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Duplicate_Filenames",
-  duplicate_filenames,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Platform_Mismatches",
-  platform_mismatches,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Topic_Variants",
-  topic_variants,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Source_Variants",
-  source_type_variants,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Excluded_Participants",
-  excluded_participants,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Not_In_Screening",
-  participants_not_in_screening,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Screenshots_per_Person",
-  screenshots_per_participant,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Screenshots_per_Day",
-  screenshots_per_day,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Topics_Screenshot",
-  topic_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Sources_Screenshot",
-  source_type_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Source_Names",
-  source_name_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Platforms_Screenshot",
-  platform_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Formats_Screenshot",
-  format_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Incidentality_Screenshot",
-  incidentality_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Incidentality_Binary",
-  incidentality_binary_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Interactions_Screenshot",
-  interaction_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Practice_Count",
-  practice_count_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Locality_Screenshot",
-  locality_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Situation_Screenshot",
-  situation_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Topics_PersonWeighted",
-  participant_weighted_topics,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Sources_PersonWeighted",
-  participant_weighted_sources,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Platforms_PersonWeighted",
-  participant_weighted_platforms,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Formats_PersonWeighted",
-  participant_weighted_formats,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Incident_PersonWeighted",
-  participant_weighted_incidentality,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Contexts_PersonWeighted",
-  bind_rows(
-    participant_weighted_locality,
-    participant_weighted_situation
+settings_table <- tibble(
+  Setting = c(
+    "simulate_coding",
+    "simulation_seed",
+    "simulation_overwrite_existing",
+    "simulation_use_screening_patterns",
+    "minimum_screenshots",
+    "require_screening_match",
+    "strict_coding_check",
+    "run_mixed_models",
+    "minimum_model_n",
+    "minimum_model_participants",
+    "minimum_model_events"
   ),
-  header_style
+  Value = as.character(
+    c(
+      simulate_coding,
+      simulation_seed,
+      simulation_overwrite_existing,
+      simulation_use_screening_patterns,
+      minimum_screenshots,
+      require_screening_match,
+      strict_coding_check,
+      run_mixed_models,
+      minimum_model_n,
+      minimum_model_participants,
+      minimum_model_events
+    )
+  )
 )
 
-add_excel_sheet(
-  workbook,
-  "Practices_PersonWeighted",
-  participant_weighted_practices,
-  header_style
-)
+add_excel_sheet(workbook, "Settings", settings_table, header_style)
+add_excel_sheet(workbook, "Sample_Overview", sample_overview, header_style)
+add_excel_sheet(workbook, "Exclusions", analysis_exclusions, header_style)
+add_excel_sheet(workbook, "Coding_Completeness", coding_completeness, header_style)
+add_excel_sheet(workbook, "Invalid_Categories", invalid_categories, header_style)
+add_excel_sheet(workbook, "Duplicate_Screenshot_IDs", duplicate_screenshot_ids, header_style)
+add_excel_sheet(workbook, "Duplicate_Filenames", duplicate_filenames, header_style)
+add_excel_sheet(workbook, "Platform_Mismatches", platform_mismatches, header_style)
+add_excel_sheet(workbook, "Study_Day_Issues", study_day_issues, header_style)
+add_excel_sheet(workbook, "File_Issues", file_issues, header_style)
+add_excel_sheet(workbook, "Participant_Counts", participant_counts, header_style)
+add_excel_sheet(workbook, "Day_Summary", day_summary, header_style)
 
-add_excel_sheet(
-  workbook,
-  "Participant_Level",
-  daily_participant,
-  header_style
-)
+add_excel_sheet(workbook, "Topic_Screenshot", topic_distribution, header_style)
+add_excel_sheet(workbook, "Topic_Participant", topic_participant_summary, header_style)
+add_excel_sheet(workbook, "Topic_Shares_Person", topic_shares, header_style)
+add_excel_sheet(workbook, "Source_Screenshot", source_distribution, header_style)
+add_excel_sheet(workbook, "Source_Participant", source_participant_summary, header_style)
+add_excel_sheet(workbook, "Source_Shares_Person", source_shares, header_style)
+add_excel_sheet(workbook, "Account_Names", source_name_distribution, header_style)
+add_excel_sheet(workbook, "Platform_Screenshot", platform_distribution, header_style)
+add_excel_sheet(workbook, "Platform_Participant", platform_participant_summary, header_style)
+add_excel_sheet(workbook, "Platform_Shares_Person", platform_shares, header_style)
+add_excel_sheet(workbook, "Format_Screenshot", format_distribution, header_style)
+add_excel_sheet(workbook, "Format_Participant", format_participant_summary, header_style)
+add_excel_sheet(workbook, "Format_Shares_Person", format_shares, header_style)
+add_excel_sheet(workbook, "Incidentality", incidentality_distribution, header_style)
+add_excel_sheet(workbook, "Incidentality_Person", incidentality_participant_summary, header_style)
+add_excel_sheet(workbook, "Interactions", interaction_distribution, header_style)
+add_excel_sheet(workbook, "Local_Context", locality_distribution, header_style)
+add_excel_sheet(workbook, "Social_Context", situation_distribution, header_style)
 
-add_excel_sheet(
-  workbook,
-  "Participant_Summary",
-  participant_level_summary,
-  header_style
-)
+add_excel_sheet(workbook, "Participant_Metrics", participant_metrics, header_style)
+add_excel_sheet(workbook, "Participant_Metric_Summary", participant_metrics_summary, header_style)
+add_excel_sheet(workbook, "Topic_Platform", topic_by_platform, header_style)
+add_excel_sheet(workbook, "Source_Platform", source_by_platform, header_style)
+add_excel_sheet(workbook, "Format_Platform", format_by_platform, header_style)
+add_excel_sheet(workbook, "Topic_Incidentality", topic_by_incidentality, header_style)
+add_excel_sheet(workbook, "Source_Incidentality", source_by_incidentality, header_style)
+add_excel_sheet(workbook, "Format_Incidentality", format_by_incidentality, header_style)
+add_excel_sheet(workbook, "Interaction_Groups", interaction_by_groups, header_style)
 
-add_excel_sheet(
-  workbook,
-  "Topic_x_Platform",
-  topic_by_platform,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Source_x_Platform",
-  source_by_platform,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Format_x_Platform",
-  format_by_platform,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Incident_x_Platform",
-  incidentality_by_platform,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Topic_x_Incident",
-  topic_by_incidentality,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Source_x_Incident",
-  source_by_incidentality,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Format_x_Incident",
-  format_by_incidentality,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Locality_x_Incident",
-  locality_by_incidentality,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Situation_x_Incident",
-  situation_by_incidentality,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Interactions_by_Topic",
-  interactions_by_topic,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Interactions_by_Source",
-  interactions_by_source,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Interactions_by_Platform",
-  interactions_by_platform,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Interactions_by_Format",
-  interactions_by_format,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Interactions_by_Incident",
-  interactions_by_incidentality,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Interactions_by_Locality",
-  interactions_by_locality,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Interactions_by_Situation",
-  interactions_by_situation,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Exploratory_Models",
-  exploratory_model_results,
-  header_style
-)
-
+add_excel_sheet(workbook, "Screening_Diary_Cor", screening_diary_correlations, header_style)
+add_excel_sheet(workbook, "Topic_Need_Cor", topic_need_correlations, header_style)
+add_excel_sheet(workbook, "Source_Need_Cor", source_need_correlations, header_style)
+add_excel_sheet(workbook, "Platform_Alignment", platform_alignment_correlations, header_style)
+add_excel_sheet(workbook, "Alignment_Summary", alignment_summary, header_style)
+add_excel_sheet(workbook, "Subgroup_Summaries", subgroup_summaries, header_style)
+add_excel_sheet(workbook, "Model_Status", model_status, header_style)
+add_excel_sheet(workbook, "Model_Odds_Ratios", model_coefficients, header_style)
 
 openxlsx::saveWorkbook(
   workbook,
@@ -3032,966 +3866,7 @@ openxlsx::saveWorkbook(
 
 
 #===============================================================================
-# 27 Figure: Screenshots per participant
-#===============================================================================
-
-figure_screenshots_participant <- ggplot(
-  screenshots_per_participant,
-  aes(
-    x = N_Screenshots
-  )
-) +
-  geom_histogram(
-    binwidth = 1,
-    boundary = 0,
-    fill = project_colors["primary"],
-    color = project_colors["white"],
-    linewidth = 0.4
-  ) +
-  geom_vline(
-    xintercept = minimum_screenshots,
-    color = project_colors["accent"],
-    linewidth = 0.9,
-    linetype = "22"
-  ) +
-  labs(
-    title = "Screenshots pro Person",
-    subtitle = paste0(
-      "Die gestrichelte Linie markiert das Einschlusskriterium von ",
-      minimum_screenshots,
-      " Screenshots."
-    ),
-    x = "Anzahl der Screenshots",
-    y = "Anzahl der Teilnehmenden"
-  )
-
-
-save_project_plot(
-  figure_screenshots_participant,
-  "Daily_01_Screenshots_per_Person.png"
-)
-
-
-#===============================================================================
-# 28 Figure: Screenshots per study day
-#===============================================================================
-
-figure_screenshots_day <- ggplot(
-  screenshots_per_day,
-  aes(
-    x = factor(
-      study_day
-    ),
-    y = N_Screenshots
-  )
-) +
-  geom_col(
-    width = 0.64,
-    fill = project_colors["primary"]
-  ) +
-  geom_text(
-    aes(
-      label = N_Screenshots
-    ),
-    vjust = -0.45,
-    color = project_colors["dark"],
-    fontface = "bold"
-  ) +
-  scale_y_continuous(
-    expand = expansion(
-      mult = c(
-        0,
-        0.12
-      )
-    )
-  ) +
-  labs(
-    title = "Screenshots nach Studientag",
-    subtitle = "Absolute Anzahl der codierten Screenshots",
-    x = "Studientag",
-    y = "Anzahl der Screenshots"
-  )
-
-
-save_project_plot(
-  figure_screenshots_day,
-  "Daily_02_Screenshots_per_Day.png"
-)
-
-
-#===============================================================================
-# 29 Figure: Platforms
-#===============================================================================
-
-platform_plot_data <- daily %>%
-  count(
-    platform,
-    name = "N"
-  ) %>%
-  mutate(
-    Percent = 100 * N / sum(N)
-  )
-
-
-figure_platform <- ggplot(
-  platform_plot_data,
-  aes(
-    x = platform,
-    y = Percent,
-    fill = platform
-  )
-) +
-  geom_col(
-    width = 0.64
-  ) +
-  geom_text(
-    aes(
-      label = scales::number(
-        Percent,
-        accuracy = 0.1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
-    ),
-    vjust = -0.45,
-    color = project_colors["dark"],
-    fontface = "bold"
-  ) +
-  scale_fill_manual(
-    values = platform_colors
-  ) +
-  scale_y_continuous(
-    labels = percent_labels,
-    expand = expansion(
-      mult = c(
-        0,
-        0.13
-      )
-    )
-  ) +
-  guides(
-    fill = "none"
-  ) +
-  labs(
-    title = "Plattformverteilung",
-    subtitle = "Screenshot-gewichtete Verteilung",
-    x = NULL,
-    y = "Anteil der Screenshots"
-  )
-
-
-save_project_plot(
-  figure_platform,
-  "Daily_03_Platforms.png"
-)
-
-
-#===============================================================================
-# 30 Figure: Top topics
-#===============================================================================
-
-top_topics_plot_data <- daily %>%
-  count(
-    topic,
-    sort = TRUE,
-    name = "N"
-  ) %>%
-  mutate(
-    Percent = 100 * N / sum(N)
-  ) %>%
-  slice_head(
-    n = number_top_topics
-  ) %>%
-  mutate(
-    topic = forcats::fct_reorder(
-      topic,
-      N
-    )
-  )
-
-
-figure_topics <- ggplot(
-  top_topics_plot_data,
-  aes(
-    x = topic,
-    y = Percent
-  )
-) +
-  geom_col(
-    width = 0.64,
-    fill = project_colors["primary"]
-  ) +
-  geom_text(
-    aes(
-      label = scales::number(
-        Percent,
-        accuracy = 0.1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
-    ),
-    hjust = -0.15,
-    color = project_colors["dark"],
-    fontface = "bold"
-  ) +
-  coord_flip(
-    clip = "off"
-  ) +
-  scale_y_continuous(
-    labels = percent_labels,
-    expand = expansion(
-      mult = c(
-        0,
-        0.18
-      )
-    )
-  ) +
-  labs(
-    title = "Häufigste Themen",
-    subtitle = paste0(
-      "Die ",
-      number_top_topics,
-      " häufigsten codierten Topic-Kategorien"
-    ),
-    x = NULL,
-    y = "Anteil der Screenshots"
-  )
-
-
-save_project_plot(
-  figure_topics,
-  "Daily_04_Topics.png",
-  width = 9,
-  height = 7
-)
-
-
-#===============================================================================
-# 31 Figure: Top source categories
-#===============================================================================
-
-top_sources_plot_data <- daily %>%
-  count(
-    source_type,
-    sort = TRUE,
-    name = "N"
-  ) %>%
-  mutate(
-    Percent = 100 * N / sum(N)
-  ) %>%
-  slice_head(
-    n = number_top_sources
-  ) %>%
-  mutate(
-    source_type = forcats::fct_reorder(
-      source_type,
-      N
-    )
-  )
-
-
-figure_sources <- ggplot(
-  top_sources_plot_data,
-  aes(
-    x = source_type,
-    y = Percent
-  )
-) +
-  geom_col(
-    width = 0.64,
-    fill = project_colors["secondary"]
-  ) +
-  geom_text(
-    aes(
-      label = scales::number(
-        Percent,
-        accuracy = 0.1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
-    ),
-    hjust = -0.15,
-    color = project_colors["dark"],
-    fontface = "bold"
-  ) +
-  coord_flip(
-    clip = "off"
-  ) +
-  scale_y_continuous(
-    labels = percent_labels,
-    expand = expansion(
-      mult = c(
-        0,
-        0.18
-      )
-    )
-  ) +
-  labs(
-    title = "Häufigste Quellen- und Accountkategorien",
-    subtitle = paste0(
-      "Die ",
-      number_top_sources,
-      " häufigsten codierten Kategorien"
-    ),
-    x = NULL,
-    y = "Anteil der Screenshots"
-  )
-
-
-save_project_plot(
-  figure_sources,
-  "Daily_05_Source_Types.png",
-  width = 9,
-  height = 7
-)
-
-
-#===============================================================================
-# 32 Figure: Formats
-#===============================================================================
-
-format_plot_data <- daily %>%
-  count(
-    media_format,
-    name = "N"
-  ) %>%
-  mutate(
-    Percent = 100 * N / sum(N)
-  )
-
-
-figure_formats <- ggplot(
-  format_plot_data,
-  aes(
-    x = media_format,
-    y = Percent,
-    fill = media_format
-  )
-) +
-  geom_col(
-    width = 0.64
-  ) +
-  geom_text(
-    aes(
-      label = scales::number(
-        Percent,
-        accuracy = 0.1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
-    ),
-    vjust = -0.45,
-    color = project_colors["dark"],
-    fontface = "bold"
-  ) +
-  scale_fill_manual(
-    values = format_colors
-  ) +
-  scale_y_continuous(
-    labels = percent_labels,
-    expand = expansion(
-      mult = c(
-        0,
-        0.13
-      )
-    )
-  ) +
-  guides(
-    fill = "none"
-  ) +
-  labs(
-    title = "Medienformate",
-    subtitle = "Screenshot-gewichtete Verteilung",
-    x = NULL,
-    y = "Anteil der Screenshots"
-  )
-
-
-save_project_plot(
-  figure_formats,
-  "Daily_06_Formats.png"
-)
-
-
-#===============================================================================
-# 33 Figure: Incidentality
-#===============================================================================
-
-incidentality_plot_data <- daily %>%
-  count(
-    incidentality,
-    name = "N"
-  ) %>%
-  mutate(
-    Percent = 100 * N / sum(N)
-  )
-
-
-figure_incidentality <- ggplot(
-  incidentality_plot_data,
-  aes(
-    x = incidentality,
-    y = Percent,
-    fill = incidentality
-  )
-) +
-  geom_col(
-    width = 0.64
-  ) +
-  geom_text(
-    aes(
-      label = scales::number(
-        Percent,
-        accuracy = 0.1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
-    ),
-    vjust = -0.45,
-    color = project_colors["dark"],
-    fontface = "bold"
-  ) +
-  scale_fill_manual(
-    values = incidentality_colors
-  ) +
-  scale_y_continuous(
-    labels = percent_labels,
-    expand = expansion(
-      mult = c(
-        0,
-        0.14
-      )
-    )
-  ) +
-  guides(
-    fill = "none"
-  ) +
-  labs(
-    title = "Art der Informationsbegegnung",
-    subtitle = "Screenshot-gewichtete Verteilung",
-    x = NULL,
-    y = "Anteil der Screenshots"
-  ) +
-  theme(
-    axis.text.x = element_text(
-      angle = 15,
-      hjust = 1
-    )
-  )
-
-
-save_project_plot(
-  figure_incidentality,
-  "Daily_07_Incidentality.png",
-  width = 9
-)
-
-
-#===============================================================================
-# 34 Figure: Selection and engagement
-#===============================================================================
-
-figure_interactions <- ggplot(
-  interaction_summary,
-  aes(
-    x = Practice,
-    y = Percent_Selected,
-    fill = Practice
-  )
-) +
-  geom_col(
-    width = 0.64
-  ) +
-  geom_text(
-    aes(
-      label = scales::number(
-        Percent_Selected,
-        accuracy = 0.1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
-    ),
-    vjust = -0.45,
-    color = project_colors["dark"],
-    fontface = "bold"
-  ) +
-  scale_fill_manual(
-    values = interaction_colors
-  ) +
-  scale_y_continuous(
-    limits = c(
-      0,
-      100
-    ),
-    labels = percent_labels,
-    expand = expansion(
-      mult = c(
-        0,
-        0.08
-      )
-    )
-  ) +
-  guides(
-    fill = "none"
-  ) +
-  labs(
-    title = "Selektions- und Engagementpraktiken",
-    subtitle = "Mehrfachnennungen waren möglich",
-    x = NULL,
-    y = "Anteil der gültigen Antworten"
-  )
-
-
-save_project_plot(
-  figure_interactions,
-  "Daily_08_Interactions.png",
-  width = 8
-)
-
-
-#===============================================================================
-# 35 Figure: Contexts
-#===============================================================================
-
-context_plot_data <- daily %>%
-  transmute(
-    Räumlich = as.character(
-      locality
-    ),
-    
-    Sozial = as.character(
-      situation
-    )
-  ) %>%
-  pivot_longer(
-    cols = everything(),
-    names_to = "Context_Dimension",
-    values_to = "Context"
-  ) %>%
-  filter(
-    !is.na(Context),
-    Context != "Weiß nicht mehr"
-  ) %>%
-  count(
-    Context_Dimension,
-    Context,
-    name = "N"
-  ) %>%
-  group_by(
-    Context_Dimension
-  ) %>%
-  mutate(
-    Percent = 100 * N / sum(N)
-  ) %>%
-  ungroup()
-
-
-context_colors <- c(
-  Räumlich = project_colors["primary"],
-  Sozial = project_colors["accent"]
-)
-
-
-figure_contexts <- ggplot(
-  context_plot_data,
-  aes(
-    x = forcats::fct_reorder(
-      Context,
-      Percent
-    ),
-    y = Percent,
-    fill = Context_Dimension
-  )
-) +
-  geom_col(
-    width = 0.64
-  ) +
-  geom_text(
-    aes(
-      label = scales::number(
-        Percent,
-        accuracy = 0.1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
-    ),
-    hjust = -0.15,
-    color = project_colors["dark"],
-    fontface = "bold"
-  ) +
-  coord_flip(
-    clip = "off"
-  ) +
-  facet_wrap(
-    ~ Context_Dimension,
-    scales = "free_y"
-  ) +
-  scale_fill_manual(
-    values = context_colors
-  ) +
-  scale_y_continuous(
-    labels = percent_labels,
-    expand = expansion(
-      mult = c(
-        0,
-        0.18
-      )
-    )
-  ) +
-  guides(
-    fill = "none"
-  ) +
-  labs(
-    title = "Situative Nutzungskontexte",
-    subtitle = "Antworten „Weiß nicht mehr“ sind nicht dargestellt",
-    x = NULL,
-    y = "Anteil der Screenshots"
-  )
-
-
-save_project_plot(
-  figure_contexts,
-  "Daily_09_Contexts.png",
-  width = 10,
-  height = 6
-)
-
-
-#===============================================================================
-# 36 Figure: Incidentality by platform
-#===============================================================================
-
-incidentality_platform_plot_data <- daily %>%
-  count(
-    platform,
-    incidentality,
-    name = "N"
-  ) %>%
-  group_by(
-    platform
-  ) %>%
-  mutate(
-    Percent = 100 * N / sum(N)
-  ) %>%
-  ungroup()
-
-
-figure_incidentality_platform <- ggplot(
-  incidentality_platform_plot_data,
-  aes(
-    x = platform,
-    y = Percent,
-    fill = incidentality
-  )
-) +
-  geom_col(
-    width = 0.68
-  ) +
-  scale_fill_manual(
-    values = incidentality_colors
-  ) +
-  scale_y_continuous(
-    limits = c(
-      0,
-      100
-    ),
-    labels = percent_labels,
-    expand = expansion(
-      mult = c(
-        0,
-        0.02
-      )
-    )
-  ) +
-  labs(
-    title = "Informationsbegegnung nach Plattform",
-    subtitle = "Prozentuale Verteilung innerhalb der jeweiligen Plattform",
-    x = NULL,
-    y = "Anteil innerhalb der Plattform"
-  )
-
-
-save_project_plot(
-  figure_incidentality_platform,
-  "Daily_10_Incidentality_by_Platform.png",
-  width = 9,
-  height = 6
-)
-
-
-#===============================================================================
-# 37 Figure: Practices by incidentality
-#===============================================================================
-
-figure_interactions_incidentality <- ggplot(
-  interactions_by_incidentality,
-  aes(
-    x = Group,
-    y = Percent_Selected,
-    fill = Practice
-  )
-) +
-  geom_col(
-    position = position_dodge(
-      width = 0.72
-    ),
-    width = 0.66
-  ) +
-  scale_fill_manual(
-    values = interaction_colors
-  ) +
-  scale_y_continuous(
-    limits = c(
-      0,
-      100
-    ),
-    labels = percent_labels,
-    expand = expansion(
-      mult = c(
-        0,
-        0.04
-      )
-    )
-  ) +
-  labs(
-    title = "Praktiken nach Art der Informationsbegegnung",
-    subtitle = "Explorative, screenshot-gewichtete Gegenüberstellung",
-    x = NULL,
-    y = "Anteil der Screenshots"
-  ) +
-  theme(
-    axis.text.x = element_text(
-      angle = 15,
-      hjust = 1
-    )
-  )
-
-
-save_project_plot(
-  figure_interactions_incidentality,
-  "Daily_11_Interactions_by_Incidentality.png",
-  width = 10,
-  height = 6
-)
-
-
-#===============================================================================
-# 38 Figure: Format by platform
-#===============================================================================
-
-format_platform_plot_data <- daily %>%
-  count(
-    platform,
-    media_format,
-    name = "N"
-  ) %>%
-  group_by(
-    platform
-  ) %>%
-  mutate(
-    Percent = 100 * N / sum(N)
-  ) %>%
-  ungroup()
-
-
-figure_format_platform <- ggplot(
-  format_platform_plot_data,
-  aes(
-    x = platform,
-    y = Percent,
-    fill = media_format
-  )
-) +
-  geom_col(
-    width = 0.68
-  ) +
-  scale_fill_manual(
-    values = format_colors
-  ) +
-  scale_y_continuous(
-    limits = c(
-      0,
-      100
-    ),
-    labels = percent_labels,
-    expand = expansion(
-      mult = c(
-        0,
-        0.02
-      )
-    )
-  ) +
-  labs(
-    title = "Medienformate nach Plattform",
-    subtitle = "Prozentuale Verteilung innerhalb der jeweiligen Plattform",
-    x = NULL,
-    y = "Anteil innerhalb der Plattform"
-  )
-
-
-save_project_plot(
-  figure_format_platform,
-  "Daily_12_Formats_by_Platform.png",
-  width = 9,
-  height = 6
-)
-
-
-#===============================================================================
-# 39 Figure: Topic × platform heatmap
-#===============================================================================
-
-heatmap_topics <- daily %>%
-  count(
-    topic,
-    platform,
-    name = "N"
-  ) %>%
-  group_by(
-    topic
-  ) %>%
-  mutate(
-    Topic_Total = sum(N)
-  ) %>%
-  ungroup() %>%
-  filter(
-    Topic_Total >=
-      minimum_group_n_for_figures
-  ) %>%
-  group_by(
-    topic
-  ) %>%
-  mutate(
-    Percent_within_Topic =
-      100 * N / sum(N)
-  ) %>%
-  ungroup() %>%
-  mutate(
-    topic = forcats::fct_reorder(
-      topic,
-      Topic_Total
-    )
-  )
-
-
-figure_topic_platform_heatmap <- ggplot(
-  heatmap_topics,
-  aes(
-    x = platform,
-    y = topic,
-    fill = Percent_within_Topic
-  )
-) +
-  geom_tile(
-    color = project_colors["white"],
-    linewidth = 0.5
-  ) +
-  geom_text(
-    aes(
-      label = scales::number(
-        Percent_within_Topic,
-        accuracy = 1,
-        decimal.mark = ",",
-        suffix = " %"
-      )
-    ),
-    size = 3
-  ) +
-  scale_fill_gradient(
-    low = project_colors["light"],
-    high = project_colors["primary"],
-    labels = percent_labels
-  ) +
-  labs(
-    title = "Themenverteilung über Plattformen",
-    subtitle = paste0(
-      "Nur Topics mit mindestens ",
-      minimum_group_n_for_figures,
-      " Screenshots; Prozentwerte innerhalb eines Topics"
-    ),
-    x = NULL,
-    y = NULL,
-    fill = "Anteil"
-  ) +
-  theme(
-    panel.grid = element_blank(),
-    legend.position = "right"
-  )
-
-
-save_project_plot(
-  figure_topic_platform_heatmap,
-  "Daily_13_Topic_Platform_Heatmap.png",
-  width = 9,
-  height = 8
-)
-
-
-#===============================================================================
-# 40 Figure: Participant diversity
-#===============================================================================
-
-diversity_plot_data <- daily_participant %>%
-  select(
-    participant,
-    Topic_Richness,
-    Source_Richness,
-    Platform_Richness,
-    Format_Richness
-  ) %>%
-  pivot_longer(
-    cols = -participant,
-    names_to = "Dimension",
-    values_to = "Richness"
-  ) %>%
-  mutate(
-    Dimension = recode(
-      Dimension,
-      Topic_Richness = "Topics",
-      Source_Richness = "Quellenkategorien",
-      Platform_Richness = "Plattformen",
-      Format_Richness = "Formate"
-    )
-  )
-
-
-figure_diversity <- ggplot(
-  diversity_plot_data,
-  aes(
-    x = Dimension,
-    y = Richness
-  )
-) +
-  geom_boxplot(
-    width = 0.55,
-    fill = project_colors["light"],
-    color = project_colors["primary"],
-    outlier.shape = NA
-  ) +
-  geom_jitter(
-    width = 0.10,
-    alpha = 0.55,
-    size = 1.8,
-    color = project_colors["primary"]
-  ) +
-  labs(
-    title = "Individuelle Vielfalt der hochgeladenen Inhalte",
-    subtitle = "Anzahl unterschiedlicher Kategorien pro Person",
-    x = NULL,
-    y = "Anzahl unterschiedlicher Kategorien"
-  )
-
-
-save_project_plot(
-  figure_diversity,
-  "Daily_14_Participant_Diversity.png",
-  width = 9,
-  height = 6
-)
-
-
-#===============================================================================
-# 41 Console report
+# 25 Console report
 #===============================================================================
 
 cat(
@@ -4003,83 +3878,59 @@ cat(
 )
 
 cat(
+  "Simulation active: ",
+  simulate_coding,
+  "\n",
+  sep = ""
+)
+
+if (simulate_coding) {
+  cat(
+    "WARNING: Manual coding variables were simulated. ",
+    "Do not interpret substantive results.\n",
+    sep = ""
+  )
+}
+
+cat(
   "Rows in coding sheet: ",
-  nrow(coding_raw),
+  nrow(coding),
   "\n",
   sep = ""
 )
 
 cat(
-  "Completely coded screenshots: ",
-  nrow(daily_coded),
+  "Participants in final daily sample: ",
+  n_distinct(daily$participant),
   "\n",
   sep = ""
 )
 
 cat(
-  "Participants before minimum screenshot filter: ",
-  n_distinct(
-    daily_coded$participant
-  ),
-  "\n",
-  sep = ""
-)
-
-cat(
-  "Excluded participants with fewer than ",
-  minimum_screenshots,
-  " screenshots: ",
-  nrow(excluded_participants),
-  "\n",
-  sep = ""
-)
-
-cat(
-  "Final screenshots: ",
+  "Screenshots in final daily sample: ",
   nrow(daily),
   "\n",
   sep = ""
 )
 
 cat(
-  "Final participants: ",
-  n_distinct(
-    daily$participant
-  ),
+  "Median screenshots per participant: ",
+  round(safe_median(participant_counts$N_Screenshots), 2),
   "\n",
-  sep = ""
-)
-
-cat(
-  "Strict incidental exposure: ",
-  round(
-    100 * safe_mean(
-      daily$incidentality_strict
-    ),
-    1
-  ),
-  "%\n",
   sep = ""
 )
 
 cat(
   "Broad incidental exposure: ",
-  round(
-    100 * safe_mean(
-      daily$incidentality_broad
-    ),
-    1
-  ),
+  round(100 * safe_mean(daily$incidental_broad), 1),
   "%\n",
   sep = ""
 )
 
 cat(
-  "Platform mismatches: ",
-  nrow(
-    platform_mismatches
-  ),
-  "\n",
+  "Strict incidental exposure: ",
+  round(100 * safe_mean(daily$incidental_strict), 1),
+  "%\n",
   sep = ""
 )
 
@@ -4092,27 +3943,17 @@ cat(
 
 cat(
   "\nScreenshot-level RDS:\n",
-  screenshot_rds,
+  output_screenshot_rds,
   "\n",
   sep = ""
 )
 
 cat(
   "\nParticipant-level RDS:\n",
-  participant_rds,
+  output_participant_rds,
   "\n",
   sep = ""
 )
-
-if (run_exploratory_models) {
-  
-  cat(
-    "\nExploratory model objects:\n",
-    model_rds,
-    "\n",
-    sep = ""
-  )
-}
 
 cat(
   "\nFigures:\n",
@@ -4120,6 +3961,15 @@ cat(
   "\n",
   sep = ""
 )
+
+if (simulate_coding && write_simulated_coding_sheet) {
+  cat(
+    "\nSimulated coding sheet:\n",
+    simulated_coding_file,
+    "\n",
+    sep = ""
+  )
+}
 
 cat(
   "============================================================\n"

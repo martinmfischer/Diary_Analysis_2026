@@ -10,7 +10,8 @@ pacman::p_load(
   janitor,
   openxlsx,
   fs,
-  scales
+  scales,
+  stringr
 )
 
 
@@ -234,4 +235,33 @@ plot_frequency_data <- function(data, variable) {
     mutate(
       Percent = 100 * N / sum(N)
     )
+}
+
+
+# Zusätzliche robuste Hilfsfunktionen
+# Werden nur definiert, wenn sie nicht bereits aus 00_Helpers.R stammen.
+
+if (!exists("clean_text")) {
+  
+  clean_text <- function(x) {
+    
+    x <- as.character(x)
+    x <- stringr::str_squish(x)
+    x[x == ""] <- NA_character_
+    
+    x
+  }
+}
+
+
+if (!exists("clean_numeric")) {
+  
+  clean_numeric <- function(x) {
+    
+    suppressWarnings(
+      as.numeric(
+        as.character(x)
+      )
+    )
+  }
 }

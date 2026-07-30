@@ -18,6 +18,7 @@
 rm(list = ls())
 
 #===============================================================================
+
 # 01 Packages
 #===============================================================================
 
@@ -36,6 +37,7 @@ pacman::p_load(
 
 
 #===============================================================================
+
 # 02 Paths
 #===============================================================================
 
@@ -72,13 +74,90 @@ fs::dir_create(figure_folder)
 
 
 #===============================================================================
+
 # 03 Helper functions
 #===============================================================================
 
 source(helper_script)
 
 
-#===============================================================================
+safe_mean <- function(x) {
+  
+  if (all(is.na(x))) {
+    return(NA_real_)
+  }
+  
+  mean(
+    x,
+    na.rm = TRUE
+  )
+}
+
+
+safe_sd <- function(x) {
+  
+  if (sum(!is.na(x)) < 2) {
+    return(NA_real_)
+  }
+  
+  sd(
+    x,
+    na.rm = TRUE
+  )
+}
+
+
+safe_median <- function(x) {
+  
+  if (all(is.na(x))) {
+    return(NA_real_)
+  }
+  
+  median(
+    x,
+    na.rm = TRUE
+  )
+}
+
+
+safe_min <- function(x) {
+  
+  if (all(is.na(x))) {
+    return(NA_real_)
+  }
+  
+  min(
+    x,
+    na.rm = TRUE
+  )
+}
+
+
+safe_max <- function(x) {
+  
+  if (all(is.na(x))) {
+    return(NA_real_)
+  }
+  
+  max(
+    x,
+    na.rm = TRUE
+  )
+}
+
+
+safe_percent <- function(numerator, denominator) {
+  
+  result <- 100 * numerator / denominator
+  
+  result[
+    is.na(denominator) |
+      denominator == 0
+  ] <- NA_real_
+  
+  result
+}
+
 # 04 Load data
 #===============================================================================
 
@@ -93,6 +172,7 @@ screening_raw <- readRDS(data_file)
 
 
 #===============================================================================
+
 # 05 Check required variables
 #===============================================================================
 
@@ -142,37 +222,83 @@ if (length(missing_variables) > 0) {
 
 
 #===============================================================================
+
 # 06 Check participant codes and duplicate rows
 #===============================================================================
 
-duplicate_participants <- screening_raw %>%
+participant_code_check <- screening_raw %>%
+  mutate(
+    participant = clean_text(
+      personalParticipantCode
+    )
+  )
+
+
+missing_participant_codes <- participant_code_check %>%
+  filter(
+    is.na(
+      participant
+    )
+  )
+
+
+duplicate_participants <- participant_code_check %>%
+  filter(
+    !is.na(
+      participant
+    )
+  ) %>%
   count(
-    personalParticipantCode,
+    participant,
     name = "Number_of_Rows"
   ) %>%
   filter(
     Number_of_Rows > 1
   )
 
-if (nrow(duplicate_participants) > 0) {
+
+if (nrow(missing_participant_codes) > 0) {
   
   warning(
-    nrow(duplicate_participants),
-    " Participant Codes kommen mehrfach im Screening-Datensatz vor. ",
-    "Die doppelten Fälle werden nicht automatisch entfernt."
+    nrow(missing_participant_codes),
+    " Screening-Zeilen besitzen keinen gültigen Participant Code ",
+    "und werden aus der Analyse ausgeschlossen."
   )
 }
 
 
-#===============================================================================
+if (nrow(duplicate_participants) > 0) {
+  
+  stop(
+    paste0(
+      nrow(duplicate_participants),
+      " Participant Codes kommen mehrfach im Screening-Datensatz vor. ",
+      "Da die Analyse auf Personenebene erfolgt, muss vor der Auswertung ",
+      "entschieden werden, welche Zeile je Person gültig ist. Es wird keine ",
+      "Zeile automatisch und damit potenziell willkürlich entfernt."
+    )
+  )
+}
+
 # 07 Prepare filter variables
 #===============================================================================
 
 screening_all <- screening_raw %>%
   mutate(
-    intro_stop_age_logical = as_logical_safe(intro_stop_age),
-    intro_stop_usage_logical = as_logical_safe(intro_stop_usage),
-
+    participant = clean_text(
+      personalParticipantCode
+    ),
+    
+    intro_stop_age_logical =
+      as_logical_safe(
+        intro_stop_age
+      ),
+    
+    intro_stop_usage_logical =
+      as_logical_safe(
+        intro_stop_usage
+      ),
+    
     eligible_screening = (
       intro_stop_age_logical %in% TRUE &
         intro_stop_usage_logical %in% TRUE
@@ -184,23 +310,32 @@ screening_all <- screening_raw %>%
 eligibility_summary <- screening_all %>%
   summarise(
     N_Rows_Total = n(),
-    N_Participants_Total = n_distinct(personalParticipantCode),
+    
+    N_Participants_Total = n_distinct(
+      participant,
+      na.rm = TRUE
+    ),
+    
     N_Age_Filter_Passed = sum(
       intro_stop_age_logical %in% TRUE,
       na.rm = TRUE
     ),
+    
     N_Usage_Filter_Passed = sum(
       intro_stop_usage_logical %in% TRUE,
       na.rm = TRUE
     ),
+    
     N_Both_Filters_Passed = sum(
       eligible_screening %in% TRUE,
       na.rm = TRUE
     ),
+    
     N_Both_Filters_Not_Passed = sum(
       eligible_screening %in% FALSE,
       na.rm = TRUE
     ),
+    
     N_Filter_Status_Missing = sum(
       is.na(intro_stop_age_logical) |
         is.na(intro_stop_usage_logical)
@@ -211,11 +346,10 @@ eligibility_summary <- screening_all %>%
 # Nur teilnahmeberechtigte Personen für die vorläufige Screening-Analyse
 screening <- screening_all %>%
   filter(
-    eligible_screening %in% TRUE
+    eligible_screening %in% TRUE,
+    !is.na(participant)
   )
 
-
-#===============================================================================
 # 08 Recode numeric missing values and ensure numeric types
 #===============================================================================
 
@@ -256,6 +390,7 @@ screening <- screening %>%
 
 
 #===============================================================================
+
 # 09 Validate scale ranges
 #===============================================================================
 
@@ -325,6 +460,7 @@ if (any(range_check$N_Outside_Expected_Range > 0)) {
 
 
 #===============================================================================
+
 # 10 Label categorical variables
 #===============================================================================
 
@@ -379,6 +515,7 @@ screening <- screening %>%
 
 
 #===============================================================================
+
 # 11 Recode education
 #===============================================================================
 
@@ -416,6 +553,7 @@ screening <- screening %>%
 
 
 #===============================================================================
+
 # 12 Label platform frequency variables
 #===============================================================================
 
@@ -463,6 +601,7 @@ screening <- screening %>%
 
 
 #===============================================================================
+
 # 13 Weekly platform-use indicators
 #===============================================================================
 
@@ -497,6 +636,7 @@ screening <- screening %>%
 
 
 #===============================================================================
+
 # 14 Reverse coding and scale construction
 #===============================================================================
 
@@ -548,18 +688,27 @@ screening <- screening %>%
 
 
 #===============================================================================
+
 # 15 Reliability analysis
 #===============================================================================
 
 incidentality_items <- screening %>%
   select(
-    all_of(incidentality_index_items)
+    all_of(
+      incidentality_index_items
+    )
   )
+
+
+# Die Reliabilitätsanalysen werden mit denselben vollständigen Fällen
+# durchgeführt, auf denen auch der Index basiert.
+incidentality_items_complete <- incidentality_items %>%
+  drop_na()
 
 
 incidentality_alpha <- tryCatch(
   psych::alpha(
-    incidentality_items,
+    incidentality_items_complete,
     check.keys = FALSE,
     warnings = FALSE
   ),
@@ -576,17 +725,30 @@ incidentality_alpha <- tryCatch(
 
 
 # Bei einem eindimensionalen Modell ist Omega total relevant.
-# Omega hierarchical setzt eine hierarchische bzw. bifaktorielle Struktur
-# mit mehreren Faktoren voraus und wird daher hier nicht berichtet.
+# psych::omega() gibt bei nfactors = 1 einen Konsolenhinweis zu Omega_h aus.
+# Dieser wird abgefangen; ausgewertet wird ausschließlich Omega total.
 
 incidentality_omega <- tryCatch(
-  suppressWarnings(
-    psych::omega(
-      incidentality_items,
-      nfactors = 1,
-      plot = FALSE
+  {
+    omega_result <- NULL
+    
+    invisible(
+      capture.output(
+        omega_result <- suppressWarnings(
+          suppressMessages(
+            psych::omega(
+              incidentality_items_complete,
+              nfactors = 1,
+              plot = FALSE
+            )
+          )
+        ),
+        type = "output"
+      )
     )
-  ),
+    
+    omega_result
+  },
   error = function(e) {
     
     warning(
@@ -603,16 +765,18 @@ reliability_summary <- tibble(
   Scale = "Incidentality",
   
   Number_of_Items =
-    length(incidentality_index_items),
+    length(
+      incidentality_index_items
+    ),
   
-  N_Complete = sum(
-    complete.cases(
-      incidentality_items
-    )
+  N_Complete = nrow(
+    incidentality_items_complete
   ),
   
   Cronbach_Alpha = if (
-    is.null(incidentality_alpha)
+    is.null(
+      incidentality_alpha
+    )
   ) {
     NA_real_
   } else {
@@ -622,7 +786,9 @@ reliability_summary <- tibble(
   },
   
   Standardized_Alpha = if (
-    is.null(incidentality_alpha)
+    is.null(
+      incidentality_alpha
+    )
   ) {
     NA_real_
   } else {
@@ -632,7 +798,9 @@ reliability_summary <- tibble(
   },
   
   Omega_Total = if (
-    is.null(incidentality_omega)
+    is.null(
+      incidentality_omega
+    )
   ) {
     NA_real_
   } else {
@@ -642,13 +810,89 @@ reliability_summary <- tibble(
   },
   
   Note = paste0(
-    "Omega hierarchical wird nicht berichtet, ",
-    "da ein eindimensionales Modell mit einem Faktor angenommen wird."
+    "Berichtet wird Omega total. Omega hierarchical ist bei einem ",
+    "eindimensionalen Ein-Faktor-Modell nicht sinnvoll interpretierbar."
   )
 )
 
 
-#===============================================================================
+alpha_item_statistics <- if (
+  is.null(
+    incidentality_alpha
+  )
+) {
+  
+  tibble(
+    Item = character(),
+    N = numeric(),
+    Raw_R = numeric(),
+    Standardized_R = numeric(),
+    Corrected_Item_Total_R = numeric(),
+    Mean = numeric(),
+    SD = numeric(),
+    Alpha_If_Deleted = numeric()
+  )
+  
+} else {
+  
+  incidentality_alpha$item.stats %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(
+      var = "Item"
+    ) %>%
+    as_tibble() %>%
+    transmute(
+      Item = Item,
+      N = n,
+      Raw_R = raw.r,
+      Standardized_R = std.r,
+      Corrected_Item_Total_R = r.drop,
+      Mean = mean,
+      SD = sd
+    ) %>%
+    left_join(
+      incidentality_alpha$alpha.drop %>%
+        as.data.frame() %>%
+        tibble::rownames_to_column(
+          var = "Item"
+        ) %>%
+        as_tibble() %>%
+        transmute(
+          Item = Item,
+          Alpha_If_Deleted = raw_alpha
+        ),
+      by = "Item"
+    )
+}
+
+
+incidentality_interitem_correlations <- if (
+  nrow(
+    incidentality_items_complete
+  ) >= 3
+) {
+  
+  cor(
+    incidentality_items_complete,
+    use = "complete.obs",
+    method = "pearson"
+  ) %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(
+      "Item"
+    ) %>%
+    as_tibble()
+  
+} else {
+  
+  tibble(
+    Note = paste0(
+      "Inter-Item-Korrelationen konnten wegen zu weniger ",
+      "vollständiger Fälle nicht berechnet werden."
+    )
+  )
+}
+
 # 16 Overall sample description
 #===============================================================================
 
@@ -658,18 +902,45 @@ sample_overview <- tibble(
     "Eindeutige Codes in ursprünglicher Screening-Datei",
     "Vorläufig teilnahmeberechtigte Zeilen",
     "Eindeutige vorläufig teilnahmeberechtigte Personen",
+    "Zeilen ohne gültigen Participant Code",
     "Doppelte Participant Codes",
     "Personen mit vollständigem Incidentality-Index",
     "Personen mit nicht klassifizierbarem anderem Bildungsabschluss"
   ),
   
   Value = c(
-    nrow(screening_raw),
-    n_distinct(screening_raw$personalParticipantCode),
-    nrow(screening),
-    n_distinct(screening$personalParticipantCode),
-    nrow(duplicate_participants),
-    sum(!is.na(screening$incidentality_index)),
+    nrow(
+      screening_raw
+    ),
+    
+    n_distinct(
+      screening_raw$personalParticipantCode,
+      na.rm = TRUE
+    ),
+    
+    nrow(
+      screening
+    ),
+    
+    n_distinct(
+      screening$participant,
+      na.rm = TRUE
+    ),
+    
+    nrow(
+      missing_participant_codes
+    ),
+    
+    nrow(
+      duplicate_participants
+    ),
+    
+    sum(
+      !is.na(
+        screening$incidentality_index
+      )
+    ),
+    
     sum(
       screening$education_other_unclassified %in% TRUE,
       na.rm = TRUE
@@ -702,8 +973,6 @@ education_three_level_summary <- frequency_summary(
   "Bildung, dreistufig"
 )
 
-
-#===============================================================================
 # 17 Usage intensity
 #===============================================================================
 
@@ -721,12 +990,13 @@ usage_intensity_distribution <- item_distribution(
 
 
 #===============================================================================
+
 # 18 Platform-use data in long format
 #===============================================================================
 
 platform_long <- screening %>%
   select(
-    personalParticipantCode,
+    participant,
     Facebook = intro_freq_facebook,
     Instagram = intro_freq_instagram,
     TikTok = intro_freq_tiktok,
@@ -760,9 +1030,21 @@ platform_long <- screening %>%
       ordered = TRUE
     ),
     
+    Used_At_All = case_when(
+      is.na(Usage_Frequency) ~ NA,
+      Usage_Frequency > 1 ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    
     Weekly_Use = case_when(
       is.na(Usage_Frequency) ~ NA,
       Usage_Frequency >= 5 ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    
+    Daily_Use = case_when(
+      is.na(Usage_Frequency) ~ NA,
+      Usage_Frequency >= 7 ~ TRUE,
       TRUE ~ FALSE
     )
   )
@@ -774,67 +1056,36 @@ platform_descriptives <- platform_long %>%
   ) %>%
   summarise(
     N_Valid = sum(
-      !is.na(Usage_Frequency)
+      !is.na(
+        Usage_Frequency
+      )
     ),
     
     N_Missing = sum(
-      is.na(Usage_Frequency)
+      is.na(
+        Usage_Frequency
+      )
     ),
     
-    Mean = if (
-      sum(!is.na(Usage_Frequency)) > 0
-    ) {
-      mean(
-        Usage_Frequency,
-        na.rm = TRUE
-      )
-    } else {
-      NA_real_
-    },
+    Mean = safe_mean(
+      Usage_Frequency
+    ),
     
-    SD = if (
-      sum(!is.na(Usage_Frequency)) > 1
-    ) {
-      sd(
-        Usage_Frequency,
-        na.rm = TRUE
-      )
-    } else {
-      NA_real_
-    },
+    SD = safe_sd(
+      Usage_Frequency
+    ),
     
-    Median = if (
-      sum(!is.na(Usage_Frequency)) > 0
-    ) {
-      median(
-        Usage_Frequency,
-        na.rm = TRUE
-      )
-    } else {
-      NA_real_
-    },
+    Median = safe_median(
+      Usage_Frequency
+    ),
     
-    Minimum = if (
-      sum(!is.na(Usage_Frequency)) > 0
-    ) {
-      min(
-        Usage_Frequency,
-        na.rm = TRUE
-      )
-    } else {
-      NA_real_
-    },
+    Minimum = safe_min(
+      Usage_Frequency
+    ),
     
-    Maximum = if (
-      sum(!is.na(Usage_Frequency)) > 0
-    ) {
-      max(
-        Usage_Frequency,
-        na.rm = TRUE
-      )
-    } else {
-      NA_real_
-    },
+    Maximum = safe_max(
+      Usage_Frequency
+    ),
     
     .groups = "drop"
   )
@@ -845,79 +1096,121 @@ platform_weekly_summary <- platform_long %>%
     Platform
   ) %>%
   summarise(
-    N_Valid = sum(!is.na(Weekly_Use)),
-    N_Weekly = sum(Weekly_Use %in% TRUE, na.rm = TRUE),
+    N_Valid = sum(
+      !is.na(
+        Weekly_Use
+      )
+    ),
+    
+    N_Weekly = sum(
+      Weekly_Use %in% TRUE,
+      na.rm = TRUE
+    ),
+    
     N_Less_Than_Weekly = sum(
       Weekly_Use %in% FALSE,
       na.rm = TRUE
     ),
-    Percent_Weekly = 100 * N_Weekly / N_Valid,
+    
+    Percent_Weekly = safe_percent(
+      N_Weekly,
+      N_Valid
+    ),
+    
     .groups = "drop"
   )
 
 
+# Für Tabellen und Grafiken werden die gültigen Antwortkategorien vollständig
+# ergänzt. Dadurch erscheinen auch Kategorien mit N = 0.
+
 platform_distribution <- platform_long %>%
-  mutate(
-    Usage_Frequency_Label = as.character(
-      Usage_Frequency_Label
-    ),
-    
-    Usage_Frequency_Label = replace_na(
-      Usage_Frequency_Label,
-      "Missing"
+  filter(
+    !is.na(
+      Usage_Frequency
     )
   ) %>%
   count(
     Platform,
     Usage_Frequency,
-    Usage_Frequency_Label,
     name = "N"
+  ) %>%
+  tidyr::complete(
+    Platform,
+    Usage_Frequency = 1:8,
+    fill = list(
+      N = 0
+    )
   ) %>%
   group_by(
     Platform
   ) %>%
   mutate(
-    Percent = 100 * N / sum(N)
+    N_Valid = sum(
+      N
+    ),
+    
+    Percent_Valid = safe_percent(
+      N,
+      N_Valid
+    ),
+    
+    Usage_Frequency_Label = factor(
+      Usage_Frequency,
+      levels = 1:8,
+      labels = frequency_levels,
+      ordered = TRUE
+    )
   ) %>%
   ungroup() %>%
   arrange(
     Platform,
-    is.na(Usage_Frequency),
     Usage_Frequency
   )
 
-
-#===============================================================================
 # 19 Information needs
 #===============================================================================
+
+information_need_labels <- c(
+  intro_ib_undirected =
+    "Ungerichtetes Informationsbedürfnis",
+  
+  intro_ib_thematic =
+    "Thematisches Informationsbedürfnis",
+  
+  intro_ib_social =
+    "Soziales Informationsbedürfnis",
+  
+  intro_ib_problem =
+    "Problembezogenes Informationsbedürfnis"
+)
 
 
 information_needs_long <- screening %>%
   select(
-    personalParticipantCode,
-    Ungerichtet = intro_ib_undirected,
-    Thematisch = intro_ib_thematic,
-    Sozial = intro_ib_social,
-    Problembezogen = intro_ib_problem
+    participant,
+    all_of(
+      names(
+        information_need_labels
+      )
+    )
   ) %>%
   pivot_longer(
-    cols = c(
-      Ungerichtet,
-      Thematisch,
-      Sozial,
-      Problembezogen
+    cols = all_of(
+      names(
+        information_need_labels
+      )
     ),
-    names_to = "Information_Need",
+    names_to = "Information_Need_Variable",
     values_to = "Importance"
   ) %>%
   mutate(
     Information_Need = factor(
-      Information_Need,
-      levels = c(
-        "Ungerichtet",
-        "Thematisch",
-        "Sozial",
-        "Problembezogen"
+      information_need_labels[
+        Information_Need_Variable
+      ],
+      levels = unname(
+        information_need_labels
       )
     )
   )
@@ -928,37 +1221,103 @@ information_needs_descriptives <- information_needs_long %>%
     Information_Need
   ) %>%
   summarise(
-    N_Valid = sum(!is.na(Importance)),
-    N_Missing = sum(is.na(Importance)),
-    Mean = mean(Importance, na.rm = TRUE),
-    SD = sd(Importance, na.rm = TRUE),
-    Median = median(Importance, na.rm = TRUE),
-    Minimum = min(Importance, na.rm = TRUE),
-    Maximum = max(Importance, na.rm = TRUE),
+    N_Valid = sum(
+      !is.na(
+        Importance
+      )
+    ),
+    
+    N_Missing = sum(
+      is.na(
+        Importance
+      )
+    ),
+    
+    Mean = safe_mean(
+      Importance
+    ),
+    
+    SD = safe_sd(
+      Importance
+    ),
+    
+    Median = safe_median(
+      Importance
+    ),
+    
+    Minimum = safe_min(
+      Importance
+    ),
+    
+    Maximum = safe_max(
+      Importance
+    ),
     
     CI95_Lower = {
-      n_value <- sum(!is.na(Importance))
-      mean_value <- mean(Importance, na.rm = TRUE)
-      sd_value <- sd(Importance, na.rm = TRUE)
+      n_value <- sum(
+        !is.na(
+          Importance
+        )
+      )
       
-      if (n_value > 1) {
+      mean_value <- safe_mean(
+        Importance
+      )
+      
+      sd_value <- safe_sd(
+        Importance
+      )
+      
+      if (
+        n_value > 1 &&
+        !is.na(
+          sd_value
+        )
+      ) {
         mean_value -
-          qt(0.975, df = n_value - 1) *
-          sd_value / sqrt(n_value)
+          qt(
+            0.975,
+            df = n_value - 1
+          ) *
+          sd_value /
+          sqrt(
+            n_value
+          )
       } else {
         NA_real_
       }
     },
     
     CI95_Upper = {
-      n_value <- sum(!is.na(Importance))
-      mean_value <- mean(Importance, na.rm = TRUE)
-      sd_value <- sd(Importance, na.rm = TRUE)
+      n_value <- sum(
+        !is.na(
+          Importance
+        )
+      )
       
-      if (n_value > 1) {
+      mean_value <- safe_mean(
+        Importance
+      )
+      
+      sd_value <- safe_sd(
+        Importance
+      )
+      
+      if (
+        n_value > 1 &&
+        !is.na(
+          sd_value
+        )
+      ) {
         mean_value +
-          qt(0.975, df = n_value - 1) *
-          sd_value / sqrt(n_value)
+          qt(
+            0.975,
+            df = n_value - 1
+          ) *
+          sd_value /
+          sqrt(
+            n_value
+          )
       } else {
         NA_real_
       }
@@ -969,34 +1328,42 @@ information_needs_descriptives <- information_needs_long %>%
 
 
 information_needs_distribution <- information_needs_long %>%
-  mutate(
-    Response_Label = if_else(
-      is.na(Importance),
-      "Missing",
-      as.character(Importance)
+  filter(
+    !is.na(
+      Importance
     )
   ) %>%
   count(
     Information_Need,
     Importance,
-    Response_Label,
     name = "N"
+  ) %>%
+  tidyr::complete(
+    Information_Need,
+    Importance = 1:5,
+    fill = list(
+      N = 0
+    )
   ) %>%
   group_by(
     Information_Need
   ) %>%
   mutate(
-    Percent = 100 * N / sum(N)
+    N_Valid = sum(
+      N
+    ),
+    
+    Percent_Valid = safe_percent(
+      N,
+      N_Valid
+    )
   ) %>%
   ungroup() %>%
   arrange(
     Information_Need,
-    is.na(Importance),
     Importance
   )
 
-
-#===============================================================================
 # 20 Incidentality
 #===============================================================================
 
@@ -1007,89 +1374,134 @@ incidentality_index_summary <- continuous_summary(
 )
 
 
-incidentality_items_long <- screening %>%
+incidentality_item_labels <- c(
+  intro_incidentality_1 =
+    "Item 1",
+  
+  intro_incidentality_2 =
+    "Item 2",
+  
+  intro_incidentality_3 =
+    "Item 3",
+  
+  intro_incidentality_4 =
+    "Item 4",
+  
+  intro_incidentality_5_reversed =
+    "Item 5, invertiert",
+  
+  intro_incidentality_6 =
+    "Item 6"
+)
+
+
+# Skalenorientierte Fassung: Item 5 ist invertiert, sodass höhere Werte bei
+# allen Items eine stärker inzidentelle Informationsnutzung anzeigen.
+
+incidentality_scored_items_long <- screening %>%
   select(
-    personalParticipantCode,
-    Item_1 = intro_incidentality_1,
-    Item_2 = intro_incidentality_2,
-    Item_3 = intro_incidentality_3,
-    Item_4 = intro_incidentality_4,
-    Item_5_reversed = intro_incidentality_5_reversed,
-    Item_6 = intro_incidentality_6
+    participant,
+    all_of(
+      incidentality_index_items
+    )
   ) %>%
   pivot_longer(
-    cols = starts_with("Item_"),
-    names_to = "Item",
+    cols = all_of(
+      incidentality_index_items
+    ),
+    names_to = "Item_Variable",
     values_to = "Response"
   ) %>%
   mutate(
     Item = factor(
-      Item,
-      levels = c(
-        "Item_1",
-        "Item_2",
-        "Item_3",
-        "Item_4",
-        "Item_5_reversed",
-        "Item_6"
-      ),
-      labels = c(
-        "Item 1",
-        "Item 2",
-        "Item 3",
-        "Item 4",
-        "Item 5, invertiert",
-        "Item 6"
+      incidentality_item_labels[
+        Item_Variable
+      ],
+      levels = unname(
+        incidentality_item_labels
       )
     )
   )
 
 
-incidentality_item_descriptives <- incidentality_items_long %>%
+incidentality_item_descriptives <- incidentality_scored_items_long %>%
   group_by(
     Item
   ) %>%
   summarise(
-    N_Valid = sum(!is.na(Response)),
-    N_Missing = sum(is.na(Response)),
-    Mean = mean(Response, na.rm = TRUE),
-    SD = sd(Response, na.rm = TRUE),
-    Median = median(Response, na.rm = TRUE),
-    Minimum = min(Response, na.rm = TRUE),
-    Maximum = max(Response, na.rm = TRUE),
+    N_Valid = sum(
+      !is.na(
+        Response
+      )
+    ),
+    
+    N_Missing = sum(
+      is.na(
+        Response
+      )
+    ),
+    
+    Mean = safe_mean(
+      Response
+    ),
+    
+    SD = safe_sd(
+      Response
+    ),
+    
+    Median = safe_median(
+      Response
+    ),
+    
+    Minimum = safe_min(
+      Response
+    ),
+    
+    Maximum = safe_max(
+      Response
+    ),
+    
     .groups = "drop"
   )
 
 
-incidentality_item_distribution <- incidentality_items_long %>%
-  mutate(
-    Response_Label = if_else(
-      is.na(Response),
-      "Missing",
-      as.character(Response)
+incidentality_scored_distribution <- incidentality_scored_items_long %>%
+  filter(
+    !is.na(
+      Response
     )
   ) %>%
   count(
     Item,
     Response,
-    Response_Label,
     name = "N"
+  ) %>%
+  tidyr::complete(
+    Item,
+    Response = 1:5,
+    fill = list(
+      N = 0
+    )
   ) %>%
   group_by(
     Item
   ) %>%
   mutate(
-    Percent = 100 * N / sum(N)
+    N_Valid = sum(
+      N
+    ),
+    
+    Percent_Valid = safe_percent(
+      N,
+      N_Valid
+    )
   ) %>%
   ungroup() %>%
   arrange(
     Item,
-    is.na(Response),
     Response
   )
 
-
-#===============================================================================
 # 21 Typical usage contexts
 #===============================================================================
 
@@ -1112,6 +1524,7 @@ context_summary <- bind_rows(
 
 
 #===============================================================================
+
 # 22 Missing-data overview
 #===============================================================================
 
@@ -1159,6 +1572,7 @@ missing_data_summary <- purrr::map_dfr(
 
 
 #===============================================================================
+
 # 23 Compact Table 1
 #===============================================================================
 
@@ -1170,46 +1584,98 @@ table_1_continuous <- bind_rows(
   transmute(
     Variable,
     Category = NA_character_,
+    
     Statistic = paste0(
-      round(Mean, 2),
+      round(
+        Mean,
+        2
+      ),
       " (",
-      round(SD, 2),
+      round(
+        SD,
+        2
+      ),
       ")"
     ),
+    
     N = N_Valid
   )
 
 
-table_1_gender <- gender_summary %>%
+table_1_gender <- screening %>%
   filter(
-    Level != "Missing"
+    !is.na(
+      gender
+    )
+  ) %>%
+  count(
+    gender,
+    .drop = FALSE,
+    name = "N"
+  ) %>%
+  mutate(
+    Percent = safe_percent(
+      N,
+      sum(
+        N
+      )
+    )
   ) %>%
   transmute(
-    Variable,
-    Category = Level,
+    Variable = "Geschlecht",
+    Category = as.character(
+      gender
+    ),
+    
     Statistic = paste0(
       N,
       " (",
-      round(Percent, 1),
+      round(
+        Percent,
+        1
+      ),
       "%)"
     ),
+    
     N
   )
 
 
-table_1_education <- education_three_level_summary %>%
+table_1_education <- screening %>%
   filter(
-    Level != "Missing"
+    !is.na(
+      education_three_level
+    )
+  ) %>%
+  count(
+    education_three_level,
+    .drop = FALSE,
+    name = "N"
+  ) %>%
+  mutate(
+    Percent = safe_percent(
+      N,
+      sum(
+        N
+      )
+    )
   ) %>%
   transmute(
-    Variable,
-    Category = Level,
+    Variable = "Bildung, dreistufig",
+    Category = as.character(
+      education_three_level
+    ),
+    
     Statistic = paste0(
       N,
       " (",
-      round(Percent, 1),
+      round(
+        Percent,
+        1
+      ),
       "%)"
     ),
+    
     N
   )
 
@@ -1220,76 +1686,922 @@ table_1 <- bind_rows(
   table_1_education
 )
 
+# 24 Exploratory platform profiles
+#===============================================================================
 
+platform_profile <- platform_long %>%
+  group_by(
+    participant
+  ) %>%
+  summarise(
+    N_Platforms_Used = if (
+      all(
+        is.na(
+          Used_At_All
+        )
+      )
+    ) {
+      NA_integer_
+    } else {
+      sum(
+        Used_At_All %in% TRUE,
+        na.rm = TRUE
+      )
+    },
+    
+    N_Platforms_Weekly = if (
+      all(
+        is.na(
+          Weekly_Use
+        )
+      )
+    ) {
+      NA_integer_
+    } else {
+      sum(
+        Weekly_Use %in% TRUE,
+        na.rm = TRUE
+      )
+    },
+    
+    N_Platforms_Daily = if (
+      all(
+        is.na(
+          Daily_Use
+        )
+      )
+    ) {
+      NA_integer_
+    } else {
+      sum(
+        Daily_Use %in% TRUE,
+        na.rm = TRUE
+      )
+    },
+    
+    Maximum_Usage_Frequency = safe_max(
+      Usage_Frequency
+    ),
+    
+    Primary_Platform = {
+      
+      if (
+        all(
+          is.na(
+            Usage_Frequency
+          )
+        )
+      ) {
+        
+        NA_character_
+        
+      } else {
+        
+        maximum_frequency <- max(
+          Usage_Frequency,
+          na.rm = TRUE
+        )
+        
+        paste(
+          as.character(
+            Platform[
+              !is.na(
+                Usage_Frequency
+              ) &
+                Usage_Frequency ==
+                maximum_frequency
+            ]
+          ),
+          collapse = " / "
+        )
+      }
+    },
+    
+    Weekly_Platform_Combination = {
+      
+      weekly_platforms <- as.character(
+        Platform[
+          Weekly_Use %in% TRUE
+        ]
+      )
+      
+      if (
+        all(
+          is.na(
+            Weekly_Use
+          )
+        )
+      ) {
+        
+        NA_character_
+        
+      } else if (
+        length(
+          weekly_platforms
+        ) == 0
+      ) {
+        
+        "Keine Plattform wöchentlich"
+        
+      } else {
+        
+        paste(
+          weekly_platforms,
+          collapse = " + "
+        )
+      }
+    },
+    
+    .groups = "drop"
+  )
+
+
+screening <- screening %>%
+  left_join(
+    platform_profile,
+    by = "participant"
+  ) %>%
+  mutate(
+    Platform_Repertoire = case_when(
+      is.na(
+        N_Platforms_Weekly
+      ) ~ NA_character_,
+      
+      N_Platforms_Weekly == 0 ~
+        "Keine Plattform wöchentlich",
+      
+      N_Platforms_Weekly == 1 ~
+        "Eine Plattform wöchentlich",
+      
+      N_Platforms_Weekly >= 2 ~
+        "Mehrere Plattformen wöchentlich"
+    ),
+    
+    Platform_Repertoire = factor(
+      Platform_Repertoire,
+      levels = c(
+        "Keine Plattform wöchentlich",
+        "Eine Plattform wöchentlich",
+        "Mehrere Plattformen wöchentlich"
+      )
+    ),
+    
+    age_group = cut(
+      intro_age_num,
+      breaks = c(
+        59,
+        64,
+        69,
+        74,
+        Inf
+      ),
+      labels = c(
+        "60–64 Jahre",
+        "65–69 Jahre",
+        "70–74 Jahre",
+        "75 Jahre und älter"
+      ),
+      right = TRUE,
+      ordered_result = TRUE
+    )
+  )
+
+
+platform_repertoire_summary <- screening %>%
+  filter(
+    !is.na(
+      N_Platforms_Weekly
+    )
+  ) %>%
+  count(
+    N_Platforms_Weekly,
+    name = "N"
+  ) %>%
+  tidyr::complete(
+    N_Platforms_Weekly = 0:4,
+    fill = list(
+      N = 0
+    )
+  ) %>%
+  arrange(
+    N_Platforms_Weekly
+  )
+
+
+primary_platform_summary <- screening %>%
+  mutate(
+    Primary_Platform = replace_na(
+      Primary_Platform,
+      "Keine Angabe"
+    )
+  ) %>%
+  count(
+    Primary_Platform,
+    sort = TRUE,
+    name = "N"
+  )
+
+
+weekly_platform_combination_summary <- screening %>%
+  mutate(
+    Weekly_Platform_Combination = replace_na(
+      Weekly_Platform_Combination,
+      "Keine Angabe"
+    )
+  ) %>%
+  count(
+    Weekly_Platform_Combination,
+    sort = TRUE,
+    name = "N"
+  )
+
+
+platform_profile_summary <- screening %>%
+  summarise(
+    N = n(),
+    
+    Mean_Platforms_Used = safe_mean(
+      N_Platforms_Used
+    ),
+    
+    SD_Platforms_Used = safe_sd(
+      N_Platforms_Used
+    ),
+    
+    Median_Platforms_Used = safe_median(
+      N_Platforms_Used
+    ),
+    
+    Mean_Platforms_Weekly = safe_mean(
+      N_Platforms_Weekly
+    ),
+    
+    SD_Platforms_Weekly = safe_sd(
+      N_Platforms_Weekly
+    ),
+    
+    Median_Platforms_Weekly = safe_median(
+      N_Platforms_Weekly
+    ),
+    
+    Mean_Platforms_Daily = safe_mean(
+      N_Platforms_Daily
+    ),
+    
+    SD_Platforms_Daily = safe_sd(
+      N_Platforms_Daily
+    ),
+    
+    Median_Platforms_Daily = safe_median(
+      N_Platforms_Daily
+    )
+  )
+
+
+weekly_platform_wide <- platform_long %>%
+  select(
+    participant,
+    Platform,
+    Weekly_Use
+  ) %>%
+  mutate(
+    Platform = as.character(
+      Platform
+    )
+  ) %>%
+  pivot_wider(
+    names_from = Platform,
+    values_from = Weekly_Use
+  )
+
+
+platform_names <- c(
+  "Facebook",
+  "Instagram",
+  "TikTok",
+  "X"
+)
+
+
+platform_pair_list <- combn(
+  platform_names,
+  2,
+  simplify = FALSE
+)
+
+
+platform_co_use_summary <- purrr::map_dfr(
+  platform_pair_list,
+  function(platform_pair) {
+    
+    platform_1 <- platform_pair[[1]]
+    platform_2 <- platform_pair[[2]]
+    
+    tibble(
+      Platform_1 = platform_1,
+      Platform_2 = platform_2,
+      
+      N_Valid_Pairs = sum(
+        !is.na(
+          weekly_platform_wide[[platform_1]]
+        ) &
+          !is.na(
+            weekly_platform_wide[[platform_2]]
+          )
+      ),
+      
+      N_Using_Both_Weekly = sum(
+        weekly_platform_wide[[platform_1]] %in% TRUE &
+          weekly_platform_wide[[platform_2]] %in% TRUE,
+        na.rm = TRUE
+      )
+    ) %>%
+      mutate(
+        Percent_Using_Both_Weekly = safe_percent(
+          N_Using_Both_Weekly,
+          N_Valid_Pairs
+        )
+      )
+  }
+)
+
+# 25 Exploratory information-need profiles
 #===============================================================================
-# 24 Save prepared data
+
+information_need_profiles <- information_needs_long %>%
+  group_by(
+    participant
+  ) %>%
+  summarise(
+    Mean_Importance = safe_mean(
+      Importance
+    ),
+    
+    Maximum_Importance = safe_max(
+      Importance
+    ),
+    
+    Minimum_Importance = safe_min(
+      Importance
+    ),
+    
+    Need_Differentiation =
+      Maximum_Importance -
+      Minimum_Importance,
+    
+    Number_of_High_Needs = if (
+      all(
+        is.na(
+          Importance
+        )
+      )
+    ) {
+      NA_integer_
+    } else {
+      sum(
+        Importance >= 4,
+        na.rm = TRUE
+      )
+    },
+    
+    Number_of_Top_Needs = if (
+      all(
+        is.na(
+          Importance
+        )
+      )
+    ) {
+      NA_integer_
+    } else {
+      sum(
+        Importance ==
+          Maximum_Importance,
+        na.rm = TRUE
+      )
+    },
+    
+    Dominant_Information_Need = case_when(
+      all(
+        is.na(
+          Importance
+        )
+      ) ~ NA_character_,
+      
+      Number_of_Top_Needs > 1 ~
+        "Kein eindeutiges dominantes Bedürfnis",
+      
+      TRUE ~ as.character(
+        Information_Need[
+          which.max(
+            Importance
+          )
+        ]
+      )
+    ),
+    
+    .groups = "drop"
+  )
+
+
+screening <- screening %>%
+  left_join(
+    information_need_profiles,
+    by = "participant"
+  )
+
+
+dominant_information_need_summary <- screening %>%
+  mutate(
+    Dominant_Information_Need = replace_na(
+      Dominant_Information_Need,
+      "Keine Angabe"
+    )
+  ) %>%
+  count(
+    Dominant_Information_Need,
+    sort = TRUE,
+    name = "N"
+  )
+
+
+information_need_profile_summary <- screening %>%
+  summarise(
+    N = n(),
+    
+    Mean_Need_Importance = safe_mean(
+      Mean_Importance
+    ),
+    
+    SD_Need_Importance = safe_sd(
+      Mean_Importance
+    ),
+    
+    Mean_Need_Differentiation = safe_mean(
+      Need_Differentiation
+    ),
+    
+    SD_Need_Differentiation = safe_sd(
+      Need_Differentiation
+    ),
+    
+    Mean_Number_of_High_Needs = safe_mean(
+      Number_of_High_Needs
+    ),
+    
+    SD_Number_of_High_Needs = safe_sd(
+      Number_of_High_Needs
+    )
+  )
+
+# 26 Incidentality item diagnostics
 #===============================================================================
+
+incidentality_raw_item_labels <- c(
+  intro_incidentality_1 =
+    "Item 1",
+  
+  intro_incidentality_2 =
+    "Item 2",
+  
+  intro_incidentality_3 =
+    "Item 3",
+  
+  intro_incidentality_4 =
+    "Item 4",
+  
+  intro_incidentality_5 =
+    "Item 5, negativ formuliert",
+  
+  intro_incidentality_6 =
+    "Item 6"
+)
+
+
+incidentality_raw_items_long <- screening %>%
+  select(
+    participant,
+    all_of(
+      names(
+        incidentality_raw_item_labels
+      )
+    )
+  ) %>%
+  pivot_longer(
+    cols = all_of(
+      names(
+        incidentality_raw_item_labels
+      )
+    ),
+    names_to = "Item_Variable",
+    values_to = "Response"
+  ) %>%
+  mutate(
+    Item = factor(
+      incidentality_raw_item_labels[
+        Item_Variable
+      ],
+      levels = unname(
+        incidentality_raw_item_labels
+      )
+    )
+  )
+
+
+incidentality_raw_distribution <- incidentality_raw_items_long %>%
+  filter(
+    !is.na(
+      Response
+    )
+  ) %>%
+  count(
+    Item,
+    Response,
+    name = "N"
+  ) %>%
+  tidyr::complete(
+    Item,
+    Response = 1:5,
+    fill = list(
+      N = 0
+    )
+  ) %>%
+  group_by(
+    Item
+  ) %>%
+  mutate(
+    N_Valid = sum(
+      N
+    ),
+    
+    Percent_Valid = safe_percent(
+      N,
+      N_Valid
+    )
+  ) %>%
+  ungroup() %>%
+  arrange(
+    Item,
+    Response
+  )
+
+
+# Boden- und Deckeneffekte werden auf den richtungsbereinigten Items berechnet.
+# Damit bedeutet Antwort 5 bei allen Items eine hohe Incidentality-Ausprägung.
+
+incidentality_item_floor_ceiling <- incidentality_scored_items_long %>%
+  group_by(
+    Item
+  ) %>%
+  summarise(
+    N_Valid = sum(
+      !is.na(
+        Response
+      )
+    ),
+    
+    N_Response_1 = sum(
+      Response == 1,
+      na.rm = TRUE
+    ),
+    
+    Percent_Response_1 = safe_percent(
+      N_Response_1,
+      N_Valid
+    ),
+    
+    N_Response_5 = sum(
+      Response == 5,
+      na.rm = TRUE
+    ),
+    
+    Percent_Response_5 = safe_percent(
+      N_Response_5,
+      N_Valid
+    ),
+    
+    .groups = "drop"
+  )
+
+
+incidentality_index_floor_ceiling <- screening %>%
+  summarise(
+    N_Valid = sum(
+      !is.na(
+        incidentality_index
+      )
+    ),
+    
+    N_At_Minimum = sum(
+      incidentality_index == 1,
+      na.rm = TRUE
+    ),
+    
+    Percent_At_Minimum = safe_percent(
+      N_At_Minimum,
+      N_Valid
+    ),
+    
+    N_At_Maximum = sum(
+      incidentality_index == 5,
+      na.rm = TRUE
+    ),
+    
+    Percent_At_Maximum = safe_percent(
+      N_At_Maximum,
+      N_Valid
+    )
+  )
+
+# 27 Descriptive subgroup summaries
+#===============================================================================
+
+summarise_incidentality_by_group <- function(
+    data,
+    group_variable,
+    group_label
+) {
+  
+  data %>%
+    transmute(
+      Group = as.character(
+        .data[[
+          group_variable
+        ]]
+      ),
+      
+      Incidentality_Index =
+        incidentality_index
+    ) %>%
+    filter(
+      !is.na(
+        Group
+      )
+    ) %>%
+    group_by(
+      Group
+    ) %>%
+    summarise(
+      N = sum(
+        !is.na(
+          Incidentality_Index
+        )
+      ),
+      
+      Mean = safe_mean(
+        Incidentality_Index
+      ),
+      
+      SD = safe_sd(
+        Incidentality_Index
+      ),
+      
+      Median = safe_median(
+        Incidentality_Index
+      ),
+      
+      Minimum = safe_min(
+        Incidentality_Index
+      ),
+      
+      Maximum = safe_max(
+        Incidentality_Index
+      ),
+      
+      .groups = "drop"
+    ) %>%
+    mutate(
+      Grouping_Variable = group_label,
+      .before = 1
+    )
+}
+
+
+incidentality_subgroup_summary <- bind_rows(
+  summarise_incidentality_by_group(
+    screening,
+    "age_group",
+    "Altersgruppe"
+  ),
+  
+  summarise_incidentality_by_group(
+    screening,
+    "gender",
+    "Geschlecht"
+  ),
+  
+  summarise_incidentality_by_group(
+    screening,
+    "education_three_level",
+    "Bildungsniveau"
+  ),
+  
+  summarise_incidentality_by_group(
+    screening,
+    "context_local",
+    "Typischer räumlicher Kontext"
+  ),
+  
+  summarise_incidentality_by_group(
+    screening,
+    "context_social",
+    "Typischer sozialer Kontext"
+  ),
+  
+  summarise_incidentality_by_group(
+    screening,
+    "Platform_Repertoire",
+    "Plattformrepertoire"
+  ),
+  
+  summarise_incidentality_by_group(
+    screening,
+    "Primary_Platform",
+    "Primärplattform"
+  )
+)
+
+# 28 Exploratory Spearman correlations
+#===============================================================================
+
+# Präregistrierungsnaher Fokus:
+# Der Incidentality-Index wird mit Nutzungsintensität, Alter,
+# Plattformnutzung und Informationsbedürfnissen in Beziehung gesetzt.
+# Es werden nicht wahllos sämtliche Screening-Variablen untereinander getestet.
+
+correlation_data <- screening %>%
+  transmute(
+    Incidentality =
+      incidentality_index,
+    
+    Nutzungsintensität =
+      intro_intensity,
+    
+    Alter =
+      intro_age_num,
+    
+    `Genutzte Plattformen` =
+      N_Platforms_Used,
+    
+    `Wöchentlich genutzte Plattformen` =
+      N_Platforms_Weekly,
+    
+    `Täglich genutzte Plattformen` =
+      N_Platforms_Daily,
+    
+    `Facebook-Nutzung` =
+      intro_freq_facebook,
+    
+    `Instagram-Nutzung` =
+      intro_freq_instagram,
+    
+    `TikTok-Nutzung` =
+      intro_freq_tiktok,
+    
+    `X-Nutzung` =
+      intro_freq_x,
+    
+    `Informationsbedürfnis: ungerichtet` =
+      intro_ib_undirected,
+    
+    `Informationsbedürfnis: thematisch` =
+      intro_ib_thematic,
+    
+    `Informationsbedürfnis: sozial` =
+      intro_ib_social,
+    
+    `Informationsbedürfnis: problembezogen` =
+      intro_ib_problem
+  )
+
+
+calculate_spearman_with_incidentality <- function(
+    data,
+    predictor
+) {
+  
+  pair_data <- data %>%
+    select(
+      Incidentality,
+      all_of(
+        predictor
+      )
+    ) %>%
+    drop_na()
+  
+  if (
+    nrow(
+      pair_data
+    ) < 3 ||
+    n_distinct(
+      pair_data$Incidentality
+    ) < 2 ||
+    n_distinct(
+      pair_data[[
+        predictor
+      ]]
+    ) < 2
+  ) {
+    
+    return(
+      tibble(
+        Predictor = predictor,
+        N = nrow(
+          pair_data
+        ),
+        Spearman_Rho = NA_real_,
+        P_Value = NA_real_
+      )
+    )
+  }
+  
+  test <- suppressWarnings(
+    cor.test(
+      pair_data$Incidentality,
+      pair_data[[
+        predictor
+      ]],
+      method = "spearman",
+      exact = FALSE
+    )
+  )
+  
+  tibble(
+    Predictor = predictor,
+    N = nrow(
+      pair_data
+    ),
+    Spearman_Rho = unname(
+      test$estimate
+    ),
+    P_Value = test$p.value
+  )
+}
+
+
+correlation_predictors <- setdiff(
+  names(
+    correlation_data
+  ),
+  "Incidentality"
+)
+
+
+exploratory_correlations <- purrr::map_dfr(
+  correlation_predictors,
+  ~ calculate_spearman_with_incidentality(
+    data = correlation_data,
+    predictor = .x
+  )
+) %>%
+  mutate(
+    P_Adjusted_BH = p.adjust(
+      P_Value,
+      method = "BH"
+    ),
+    
+    Analysis_Type = "Explorativ",
+    
+    Note = paste0(
+      "P-Werte dienen nur der explorativen Orientierung; ",
+      "maßgeblich sind Richtung, Größe und Unsicherheit der Zusammenhänge."
+    )
+  ) %>%
+  arrange(
+    desc(
+      abs(
+        Spearman_Rho
+      )
+    )
+  )
+
+# 29 Save prepared data
+#===============================================================================
+
+# Erst an dieser Stelle speichern: Nun enthält der Datensatz auch die
+# explorativen Personenmerkmale wie Plattformrepertoire, Altersgruppe und
+# Informationsbedürfnisprofil.
 
 saveRDS(
   screening,
   output_rds
 )
 
+
 saveRDS(
   list(
     alpha = incidentality_alpha,
-    omega = incidentality_omega
+    omega = incidentality_omega,
+    incidentality_items_complete =
+      incidentality_items_complete,
+    alpha_item_statistics =
+      alpha_item_statistics,
+    interitem_correlations =
+      incidentality_interitem_correlations
   ),
   reliability_rds
 )
 
-
-#===============================================================================
-# Alpha item statistics
-#===============================================================================
-
-alpha_item_statistics <- if (
-  is.null(incidentality_alpha)
-) {
-  
-  tibble(
-    Item = character(),
-    N = numeric(),
-    Raw_R = numeric(),
-    Standardized_R = numeric(),
-    Corrected_Item_Total_R = numeric(),
-    Alpha_If_Deleted = numeric()
-  )
-  
-} else {
-  
-  incidentality_alpha$item.stats %>%
-    as.data.frame() %>%
-    tibble::rownames_to_column(
-      var = "Item"
-    ) %>%
-    as_tibble() %>%
-    transmute(
-      Item = Item,
-      N = n,
-      Raw_R = raw.r,
-      Standardized_R = std.r,
-      Corrected_Item_Total_R = r.drop,
-      Mean = mean,
-      SD = sd
-    ) %>%
-    left_join(
-      incidentality_alpha$alpha.drop %>%
-        as.data.frame() %>%
-        tibble::rownames_to_column(
-          var = "Item"
-        ) %>%
-        as_tibble() %>%
-        transmute(
-          Item = Item,
-          Alpha_If_Deleted = raw_alpha
-        ),
-      by = "Item"
-    )
-}
-
-#===============================================================================
-# 25 Create Excel workbook
+# 30 Create Excel workbook
 #===============================================================================
 
 workbook <- openxlsx::createWorkbook()
@@ -1299,6 +2611,37 @@ header_style <- openxlsx::createStyle(
   halign = "center",
   valign = "center",
   border = "Bottom"
+)
+
+
+analysis_settings <- tibble(
+  Setting = c(
+    "Eligibility",
+    "Weekly platform use",
+    "Daily platform use",
+    "Incidentality index",
+    "Reliability",
+    "Exploratory correlations",
+    "Multiplicity adjustment"
+  ),
+  
+  Value = c(
+    "Beide Screening-Stop-Filter müssen TRUE sein",
+    "Nutzungsfrequenzcodes 5–8",
+    "Nutzungsfrequenzcodes 7–8",
+    "Mittelwert aller sechs beantworteten Items; Item 5 invertiert",
+    "Cronbachs Alpha und Omega total auf Basis vollständiger Fälle",
+    "Spearman-Korrelationen mit Incidentality als Fokusvariable",
+    "Benjamini-Hochberg-Korrektur"
+  )
+)
+
+
+add_excel_sheet(
+  workbook,
+  "Analysis_Settings",
+  analysis_settings,
+  header_style
 )
 
 add_excel_sheet(
@@ -1319,6 +2662,13 @@ add_excel_sheet(
   workbook,
   "Duplicate_Codes",
   duplicate_participants,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Missing_Codes",
+  missing_participant_codes,
   header_style
 )
 
@@ -1408,6 +2758,48 @@ add_excel_sheet(
 
 add_excel_sheet(
   workbook,
+  "Platform_Profile",
+  platform_profile,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Platform_Repertoire",
+  platform_repertoire_summary,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Platform_Combinations",
+  weekly_platform_combination_summary,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Platform_CoUse",
+  platform_co_use_summary,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Primary_Platform",
+  primary_platform_summary,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Platform_Profile_Summary",
+  platform_profile_summary,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
   "Information_Needs",
   information_needs_descriptives,
   header_style
@@ -1422,6 +2814,27 @@ add_excel_sheet(
 
 add_excel_sheet(
   workbook,
+  "InfoNeed_Profiles",
+  information_need_profiles,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "InfoNeed_Profile_Summary",
+  information_need_profile_summary,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Dominant_Info_Need",
+  dominant_information_need_summary,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
   "Incidentality_Index",
   incidentality_index_summary,
   header_style
@@ -1429,15 +2842,36 @@ add_excel_sheet(
 
 add_excel_sheet(
   workbook,
-  "Incidentality_Items",
+  "Incidentality_Item_Desc",
   incidentality_item_descriptives,
   header_style
 )
 
 add_excel_sheet(
   workbook,
-  "Incidentality_Distrib",
-  incidentality_item_distribution,
+  "Incidentality_Scored_Dist",
+  incidentality_scored_distribution,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Incidentality_Raw_Dist",
+  incidentality_raw_distribution,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Incidentality_Floor_Ceiling",
+  incidentality_item_floor_ceiling,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Incidentality_Index_Floor",
+  incidentality_index_floor_ceiling,
   header_style
 )
 
@@ -1455,20 +2889,12 @@ add_excel_sheet(
   header_style
 )
 
-# add_excel_sheet(
-#   workbook,
-#   "Alpha_Item_Deleted",
-#   alpha_if_item_deleted,
-#   header_style
-# )
-
-
-# add_excel_sheet(
-#   workbook,
-#   "Omega_Loadings",
-#   omega_loadings,
-#   header_style
-# )
+add_excel_sheet(
+  workbook,
+  "Interitem_Correlations",
+  incidentality_interitem_correlations,
+  header_style
+)
 
 add_excel_sheet(
   workbook,
@@ -1477,15 +2903,28 @@ add_excel_sheet(
   header_style
 )
 
+add_excel_sheet(
+  workbook,
+  "Incidentality_Subgroups",
+  incidentality_subgroup_summary,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Exploratory_Correlations",
+  exploratory_correlations,
+  header_style
+)
+
+
 openxlsx::saveWorkbook(
   workbook,
   file = output_excel,
   overwrite = TRUE
 )
 
-
-#===============================================================================
-# 26 Visual design
+# 31 Visual design
 #===============================================================================
 
 project_colors <- c(
@@ -1629,7 +3068,8 @@ save_project_plot <- function(
 
 
 #===============================================================================
-# 27 Figure: Age distribution
+
+# 32 Figure: Age distribution
 #===============================================================================
 
 age_plot_data <- screening %>%
@@ -1728,7 +3168,8 @@ save_project_plot(
 
 
 #===============================================================================
-# 28 Figure: Gender
+
+# 33 Figure: Gender
 #===============================================================================
 
 gender_plot_data <- screening %>%
@@ -1793,7 +3234,8 @@ save_project_plot(
 
 
 #===============================================================================
-# 29 Figure: Education
+
+# 34 Figure: Education
 #===============================================================================
 
 education_plot_data <- screening %>%
@@ -1858,7 +3300,8 @@ save_project_plot(
 
 
 #===============================================================================
-# 30 Figure: Weekly platform use
+
+# 35 Figure: Weekly platform use
 #===============================================================================
 
 platform_weekly_plot_data <- platform_long %>%
@@ -1961,7 +3404,8 @@ save_project_plot(
 
 
 #===============================================================================
-# 31 Figure: Platform-use frequency distributions
+
+# 36 Figure: Platform-use frequency distributions
 #===============================================================================
 
 platform_frequency_plot_data <- platform_long %>%
@@ -2055,7 +3499,80 @@ save_project_plot(
 
 
 #===============================================================================
-# 32 Figure: Information needs
+
+# 37 Figure: Usage intensity
+#===============================================================================
+
+usage_intensity_plot_data <- screening %>%
+  filter(
+    !is.na(
+      intro_intensity
+    )
+  ) %>%
+  count(
+    intro_intensity,
+    name = "N"
+  ) %>%
+  tidyr::complete(
+    intro_intensity = 1:7,
+    fill = list(
+      N = 0
+    )
+  )
+
+
+figure_usage_intensity <- ggplot(
+  usage_intensity_plot_data,
+  aes(
+    x = factor(
+      intro_intensity,
+      levels = 1:7
+    ),
+    y = N
+  )
+) +
+  geom_col(
+    width = 0.64,
+    fill = unname(
+      project_colors["primary"]
+    )
+  ) +
+  geom_text(
+    aes(
+      label = N
+    ),
+    vjust = -0.4,
+    color = unname(
+      project_colors["dark"]
+    ),
+    fontface = "bold",
+    size = 3.5
+  ) +
+  scale_y_continuous(
+    breaks = scales::breaks_pretty(),
+    expand = expansion(
+      mult = c(
+        0,
+        0.13
+      )
+    )
+  ) +
+  labs(
+    title = "Nutzungsintensität",
+    subtitle = "Absolute Häufigkeiten der Antwortkategorien",
+    x = "Nutzungsintensität (1–7)",
+    y = "Anzahl der Teilnehmenden"
+  )
+
+
+save_project_plot(
+  figure_usage_intensity,
+  "Screening_Usage_Intensity.png",
+  width = 8,
+  height = 5
+)
+
+# 38 Figure: Information-needs means
 #===============================================================================
 
 information_needs_plot_data <- information_needs_descriptives %>%
@@ -2115,7 +3632,93 @@ save_project_plot(
 
 
 #===============================================================================
-# 33 Figure: Incidentality index
+
+# 39 Figure: Information-needs distributions
+#===============================================================================
+
+information_needs_distribution_plot_data <-
+  information_needs_distribution %>%
+  mutate(
+    Importance_Label = factor(
+      Importance,
+      levels = 1:5,
+      ordered = TRUE
+    )
+  )
+
+
+figure_information_need_distributions <- ggplot(
+  information_needs_distribution_plot_data,
+  aes(
+    x = N,
+    y = Importance_Label
+  )
+) +
+  geom_col(
+    width = 0.68,
+    fill = unname(
+      project_colors["primary"]
+    )
+  ) +
+  geom_text(
+    aes(
+      label = if_else(
+        N > 0,
+        as.character(
+          N
+        ),
+        ""
+      )
+    ),
+    hjust = -0.2,
+    color = unname(
+      project_colors["dark"]
+    ),
+    fontface = "bold",
+    size = 3.1
+  ) +
+  facet_wrap(
+    ~ Information_Need,
+    ncol = 2
+  ) +
+  scale_x_continuous(
+    breaks = scales::breaks_pretty(),
+    expand = expansion(
+      mult = c(
+        0,
+        0.15
+      )
+    )
+  ) +
+  coord_cartesian(
+    clip = "off"
+  ) +
+  labs(
+    title = "Informationsbedürfnisse",
+    subtitle = "Absolute Häufigkeiten der Antwortkategorien",
+    x = "Anzahl der Teilnehmenden",
+    y = "Wichtigkeit (1–5)"
+  ) +
+  theme(
+    panel.grid.major.x = element_line(
+      color = unname(
+        project_colors["grid"]
+      ),
+      linewidth = 0.4
+    ),
+    
+    panel.grid.major.y = element_blank()
+  )
+
+
+save_project_plot(
+  figure_information_need_distributions,
+  "Screening_Information_Need_Distributions.png",
+  width = 11,
+  height = 7
+)
+
+# 40 Figure: Incidentality index
 #===============================================================================
 
 incidentality_plot_data <- screening %>%
@@ -2208,7 +3811,100 @@ save_project_plot(
 
 
 #===============================================================================
-# 34 Figure: Typical contexts
+
+# 41 Figure: Incidentality-item distributions
+#===============================================================================
+
+incidentality_item_plot_data <-
+  incidentality_scored_distribution %>%
+  mutate(
+    Response_Label = factor(
+      Response,
+      levels = 1:5,
+      ordered = TRUE
+    )
+  )
+
+
+figure_incidentality_items <- ggplot(
+  incidentality_item_plot_data,
+  aes(
+    x = N,
+    y = Response_Label
+  )
+) +
+  geom_col(
+    width = 0.68,
+    fill = unname(
+      project_colors["primary"]
+    )
+  ) +
+  geom_text(
+    aes(
+      label = if_else(
+        N > 0,
+        as.character(
+          N
+        ),
+        ""
+      )
+    ),
+    hjust = -0.2,
+    color = unname(
+      project_colors["dark"]
+    ),
+    fontface = "bold",
+    size = 3
+  ) +
+  facet_wrap(
+    ~ Item,
+    ncol = 2
+  ) +
+  scale_x_continuous(
+    breaks = scales::breaks_pretty(),
+    expand = expansion(
+      mult = c(
+        0,
+        0.15
+      )
+    )
+  ) +
+  coord_cartesian(
+    clip = "off"
+  ) +
+  labs(
+    title = "Items der Incidentality-Skala",
+    subtitle = paste0(
+      "Absolute Häufigkeiten; Item 5 wurde für diese Darstellung ",
+      "invertiert"
+    ),
+    x = "Anzahl der Teilnehmenden",
+    y = "Skalenwert (1–5)",
+    caption = paste0(
+      "Höhere Werte stehen bei allen dargestellten Items für eine ",
+      "stärker inzidentelle Informationsnutzung."
+    )
+  ) +
+  theme(
+    panel.grid.major.x = element_line(
+      color = unname(
+        project_colors["grid"]
+      ),
+      linewidth = 0.4
+    ),
+    
+    panel.grid.major.y = element_blank()
+  )
+
+
+save_project_plot(
+  figure_incidentality_items,
+  "Screening_Incidentality_Items.png",
+  width = 11,
+  height = 9
+)
+
+# 42 Figure: Typical contexts
 #===============================================================================
 
 # Die beiden Dimensionen werden getrennt ausgezählt.
@@ -2349,7 +4045,179 @@ save_project_plot(
   height = 6
 )
 #===============================================================================
-# 35 Console report
+
+# 43 Figure: Platform repertoire
+#===============================================================================
+
+figure_platform_repertoire <- ggplot(
+  platform_repertoire_summary,
+  aes(
+    x = factor(
+      N_Platforms_Weekly,
+      levels = 0:4
+    ),
+    y = N
+  )
+) +
+  geom_col(
+    width = 0.64,
+    fill = unname(
+      project_colors["primary"]
+    )
+  ) +
+  geom_text(
+    aes(
+      label = N
+    ),
+    vjust = -0.4,
+    color = unname(
+      project_colors["dark"]
+    ),
+    fontface = "bold",
+    size = 3.5
+  ) +
+  scale_y_continuous(
+    breaks = scales::breaks_pretty(),
+    expand = expansion(
+      mult = c(
+        0,
+        0.13
+      )
+    )
+  ) +
+  labs(
+    title = "Plattformrepertoire",
+    subtitle = paste0(
+      "Absolute Häufigkeiten mindestens wöchentlich ",
+      "genutzter Plattformen"
+    ),
+    x = "Anzahl wöchentlich genutzter Plattformen",
+    y = "Anzahl der Teilnehmenden"
+  )
+
+
+save_project_plot(
+  figure_platform_repertoire,
+  "Screening_Platform_Repertoire.png",
+  width = 8,
+  height = 5
+)
+
+# 44 Figure: Exploratory correlations with Incidentality
+#===============================================================================
+
+correlation_plot_data <- exploratory_correlations %>%
+  filter(
+    !is.na(
+      Spearman_Rho
+    )
+  ) %>%
+  mutate(
+    Predictor = forcats::fct_reorder(
+      Predictor,
+      Spearman_Rho
+    ),
+    
+    Correlation_Label = scales::number(
+      Spearman_Rho,
+      accuracy = 0.01,
+      decimal.mark = ","
+    ),
+    
+    Label_Hjust = if_else(
+      Spearman_Rho >= 0,
+      -0.35,
+      1.35
+    )
+  )
+
+
+figure_correlations <- ggplot(
+  correlation_plot_data,
+  aes(
+    x = Spearman_Rho,
+    y = Predictor
+  )
+) +
+  geom_vline(
+    xintercept = 0,
+    color = unname(
+      project_colors["grid"]
+    ),
+    linewidth = 0.8
+  ) +
+  geom_segment(
+    aes(
+      x = 0,
+      xend = Spearman_Rho,
+      yend = Predictor
+    ),
+    color = unname(
+      project_colors["secondary"]
+    ),
+    linewidth = 1
+  ) +
+  geom_point(
+    color = unname(
+      project_colors["primary"]
+    ),
+    size = 3
+  ) +
+  geom_text(
+    aes(
+      label = Correlation_Label,
+      hjust = Label_Hjust
+    ),
+    color = unname(
+      project_colors["dark"]
+    ),
+    fontface = "bold",
+    size = 3.2
+  ) +
+  scale_x_continuous(
+    limits = c(
+      -1,
+      1
+    ),
+    breaks = seq(
+      -1,
+      1,
+      by = 0.25
+    )
+  ) +
+  coord_cartesian(
+    clip = "off"
+  ) +
+  labs(
+    title = "Explorative Zusammenhänge mit Incidentality",
+    subtitle = "Spearman-Korrelationen",
+    x = "Spearman ρ",
+    y = NULL,
+    caption = paste0(
+      "Explorative Analyse. Die zugehörigen rohen und ",
+      "BH-adjustierten p-Werte stehen im Excel-Export."
+    )
+  ) +
+  theme(
+    panel.grid.major.x = element_line(
+      color = unname(
+        project_colors["grid"]
+      ),
+      linewidth = 0.4
+    ),
+    
+    panel.grid.major.y = element_blank()
+  )
+
+
+save_project_plot(
+  figure_correlations,
+  "Screening_Incidentality_Correlations.png",
+  width = 10,
+  height = 8
+)
+
+# 45 Console report
 #===============================================================================
 
 cat(
@@ -2362,39 +4230,68 @@ cat(
 
 cat(
   "Rows in raw screening data: ",
-  nrow(screening_raw),
+  nrow(
+    screening_raw
+  ),
   "\n",
   sep = ""
 )
 
 cat(
   "Provisionally eligible participants: ",
-  n_distinct(screening$personalParticipantCode),
+  n_distinct(
+    screening$participant
+  ),
   "\n",
   sep = ""
 )
 
 cat(
   "Mean age: ",
-  round(age_summary$Mean, 2),
+  round(
+    age_summary$Mean,
+    2
+  ),
   " (SD = ",
-  round(age_summary$SD, 2),
+  round(
+    age_summary$SD,
+    2
+  ),
   ")\n",
   sep = ""
 )
 
 cat(
+  "Mean weekly platform repertoire: ",
+  round(
+    platform_profile_summary$Mean_Platforms_Weekly,
+    2
+  ),
+  "\n",
+  sep = ""
+)
+
+cat(
   "Incidentality index: M = ",
-  round(incidentality_index_summary$Mean, 2),
+  round(
+    incidentality_index_summary$Mean,
+    2
+  ),
   ", SD = ",
-  round(incidentality_index_summary$SD, 2),
+  round(
+    incidentality_index_summary$SD,
+    2
+  ),
   "\n",
   sep = ""
 )
 
 cat(
   "Cronbach's alpha: ",
-  round(reliability_summary$Cronbach_Alpha, 3),
+  round(
+    reliability_summary$Cronbach_Alpha,
+    3
+  ),
   "\n",
   sep = ""
 )
@@ -2410,6 +4307,17 @@ cat(
 )
 
 cat(
+  "Exploratory Incidentality correlations: ",
+  sum(
+    !is.na(
+      exploratory_correlations$Spearman_Rho
+    )
+  ),
+  "\n",
+  sep = ""
+)
+
+cat(
   "\nExcel output:\n",
   output_excel,
   "\n",
@@ -2419,6 +4327,13 @@ cat(
 cat(
   "\nPrepared RDS:\n",
   output_rds,
+  "\n",
+  sep = ""
+)
+
+cat(
+  "\nReliability objects:\n",
+  reliability_rds,
   "\n",
   sep = ""
 )
