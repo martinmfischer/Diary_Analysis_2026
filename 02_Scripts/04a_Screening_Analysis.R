@@ -1,23 +1,183 @@
 ################################################################################
-# Project: Tagebuchstudie
+# Project: Tagebuchstudie – öffentlich relevante Informationsnutzung
 # File:    04a_Screening_Analysis.R
 #
+# REQUIRED INPUTS
+# ---------------
+# 01_Data/screening-befragung_tagebuchstudie.rds
+#   Required variables:
+#     personalParticipantCode
+#     intro_stop_age, intro_stop_usage
+#     intro_age_num, intro_gender, intro_education
+#     intro_freq_facebook, intro_freq_instagram,
+#     intro_freq_tiktok, intro_freq_x
+#     intro_intensity
+#     intro_ib_undirected, intro_ib_thematic,
+#     intro_ib_social, intro_ib_problem
+#     intro_incidentality_1 ... intro_incidentality_6
+#     intro_context_local, intro_context_situation
 #
-# Input:
-#   01_Data/screening-befragung_tagebuchstudie.rds
 #
-# Output:
-#   03_Output/Screening_Results.xlsx
-#   03_Output/screening_prepared.rds
-#   03_Output/screening_reliability_objects.rds
+# CENTRAL SETTINGS
+# ----------------
+# overwrite_outputs
+#   TRUE overwrites the existing Excel and RDS outputs.
 #
-# Figures:
-#   04_Figures/Screening_*.png
-################################################################################
+# create_figures
+#   TRUE writes all Screening_*.png files. Plots are still constructed when
+#   FALSE, but save_project_plot() returns without writing files.
+#
+# stop_on_duplicate_codes
+#   TRUE stops before analysis when one participant code occurs more than once.
+#   No row is removed automatically because this would require a substantive
+#   decision about which registration is valid.
+#
+# stop_on_out_of_range
+#   TRUE stops when an eligible case contains values outside the documented
+#   response ranges. Set FALSE only for diagnostic runs; out-of-range values are
+#   then retained and clearly reported in the Range_Check sheet.
+#
+# reliability_threshold
+#   Reference value used for the preregistered item-deletion diagnostic. The
+#   script never drops an item automatically. Any exclusion must be decided,
+#   documented and implemented explicitly before the final analysis.
+#
+# ANALYSES
+# --------
+# A. Data integrity and eligibility
+#    - required-variable check
+#    - missing and duplicate participant codes
+#    - mutually exclusive eligibility-status counts
+#    - expected-range checks
+#    - consistency of the weekly-use stop item with detailed platform reports
+#    - missing-data overview
+#
+# B. Sociodemographic description
+#    - age: N, missingness, mean, SD, median, range and distribution
+#    - gender: absolute and relative frequencies
+#    - detailed educational qualification
+#    - exploratory three-level education recode
+#    - compact Table 1
+#
+# C. Social-media use
+#    - usage-intensity scale distribution and descriptives
+#    - platform-specific ordinal frequency distributions
+#    - weekly and daily platform-use indicators
+#    - number of platforms used at all, weekly and daily
+#    - primary platform, including ties
+#    - weekly platform combinations and pairwise platform co-use
+#
+# D. Information needs
+#    - descriptives and complete 1–5 response distributions for:
+#      ungerichtet, thematisch, sozial and problembezogen
+#    - within-person mean need importance
+#    - differentiation between strongest and weakest need
+#    - number of highly rated needs
+#    - dominant information need, with ties retained as non-unique profiles
+#
+# E. Screening incidentality scale
+#    - reverse coding of item 5
+#    - complete-case mean index across all six items
+#    - index and item descriptives
+#    - raw and directionally aligned item distributions
+#    - item- and index-level floor/ceiling diagnostics
+#    - Cronbach's alpha, standardised alpha and omega total
+#    - corrected item-total correlations and alpha if item deleted
+#    - omega total if each single item were deleted
+#    - inter-item correlations
+#    NOTE: omega hierarchical is not reported for the one-factor solution,
+#    because it is not substantively meaningful in this specification.
+#
+# F. Exploratory screening patterns
+#    - Incidentality by age group, gender, education, context, platform
+#      repertoire and primary platform
+#    - central screening measures by age group, gender, education and platform
+#      repertoire
+#    - targeted Spearman correlations of Incidentality with age, use intensity,
+#      platform use and information needs
+#    - targeted Spearman correlations of age with central screening markers
+#    - Benjamini–Hochberg adjusted p-values for each exploratory family
+#
+# OUTPUT FILES
+# ------------
+# 03_Output/Screening_Results.xlsx
+#   Self-documenting workbook containing settings, codebook, quality checks,
+#   descriptives, reliability diagnostics and exploratory analyses.
+#
+# 03_Output/screening_prepared.rds
+#   One row per eligible participant. Includes cleaned original variables and
+#   derived variables required downstream, including:
+#     participant, gender, education, education_three_level, age_group,
+#     platform-use indicators and labels, N_Platforms_Used/Weekly/Daily,
+#     Primary_Platform, Platform_Repertoire, Weekly_Platform_Combination,
+#     information-need profile variables and incidentality_index.
+#
+# 03_Output/screening_reliability_objects.rds
+#   psych alpha/omega objects, complete reliability data, item diagnostics,
+#   item-deletion results and inter-item correlations.
+#
+# EXCEL WORKBOOK SHEETS
+# ---------------------
+# Documentation:
+#   Analysis_Settings, Variable_Codebook, Output_Manifest
+# Sample and quality control:
+#   Sample_Overview, Eligibility, Eligibility_Consistency, Duplicate_Codes,
+#   Missing_Codes, Range_Check, Range_Issues, Missing_Data
+# Compact and sociodemographic description:
+#   Table_1, Age, Gender, Education_Detailed, Education_3_Level
+# Usage and platform profiles:
+#   Usage_Intensity, Intensity_Distribution, Platform_Descriptives,
+#   Platform_Weekly, Platform_Distribution, Platform_Profile,
+#   Platform_Repertoire, Platform_Combinations, Platform_CoUse,
+#   Primary_Platform, Platform_Profile_Summary
+# Information needs:
+#   Information_Needs, InfoNeeds_Distribution, InfoNeed_Profiles,
+#   InfoNeed_Profile_Summary, Dominant_Info_Need
+# Incidentality and reliability:
+#   Incidentality_Index, Incidentality_Item_Desc,
+#   Incidentality_Scored_Dist, Incidentality_Raw_Dist,
+#   Incidentality_Floor_Ceiling, Incidentality_Index_Floor,
+#   Reliability, Reliability_Decision, Alpha_Item_Statistics,
+#   Omega_Item_Deleted, Interitem_Correlations
+# Contexts and exploratory analyses:
+#   Contexts, Incidentality_Subgroups, Exploratory_Subgroups,
+#   Exploratory_Correlations, Age_Correlations
+#
+# FIGURE FILES
+# ------------
+#   04_Figures/Screening_Age.png
+#   04_Figures/Screening_Gender.png
+#   04_Figures/Screening_Education.png
+#   04_Figures/Screening_Platform_Weekly.png
+#   04_Figures/Screening_Platform_Frequencies.png
+#   04_Figures/Screening_Usage_Intensity.png
+#   04_Figures/Screening_Information_Needs.png
+#   04_Figures/Screening_Information_Need_Distributions.png
+#   04_Figures/Screening_Incidentality_Index.png
+#   04_Figures/Screening_Incidentality_Items.png
+#   04_Figures/Screening_Contexts.png
+#   04_Figures/Screening_Platform_Repertoire.png
+#   04_Figures/Screening_Incidentality_Correlations.png
+#
+
 
 rm(list = ls())
 
+
 #===============================================================================
+
+# 00 Settings
+#===============================================================================
+
+analysis_version <- "2026-07-30"
+overwrite_outputs <- TRUE
+create_figures <- TRUE
+stop_on_duplicate_codes <- TRUE
+stop_on_out_of_range <- TRUE
+reliability_threshold <- 0.70
+
+#===============================================================================
+
 
 # 01 Packages
 #===============================================================================
@@ -29,7 +189,6 @@ if (!requireNamespace("pacman", quietly = TRUE)) {
 pacman::p_load(
   tidyverse,
   psych,
-  janitor,
   openxlsx,
   fs,
   scales
@@ -37,6 +196,7 @@ pacman::p_load(
 
 
 #===============================================================================
+
 
 # 02 Paths
 #===============================================================================
@@ -73,93 +233,43 @@ fs::dir_create(output_folder)
 fs::dir_create(figure_folder)
 
 
+if (
+  !overwrite_outputs &&
+  any(
+    file.exists(
+      c(
+        output_excel,
+        output_rds,
+        reliability_rds
+      )
+    )
+  )
+) {
+  stop(
+    paste0(
+      "Mindestens eine Output-Datei existiert bereits und ",
+      "overwrite_outputs = FALSE."
+    )
+  )
+}
+
+
 #===============================================================================
-
-# 03 Helper functions
-#===============================================================================
-
-source(helper_script)
-
-
-safe_mean <- function(x) {
-  
-  if (all(is.na(x))) {
-    return(NA_real_)
-  }
-  
-  mean(
-    x,
-    na.rm = TRUE
-  )
-}
-
-
-safe_sd <- function(x) {
-  
-  if (sum(!is.na(x)) < 2) {
-    return(NA_real_)
-  }
-  
-  sd(
-    x,
-    na.rm = TRUE
-  )
-}
-
-
-safe_median <- function(x) {
-  
-  if (all(is.na(x))) {
-    return(NA_real_)
-  }
-  
-  median(
-    x,
-    na.rm = TRUE
-  )
-}
-
-
-safe_min <- function(x) {
-  
-  if (all(is.na(x))) {
-    return(NA_real_)
-  }
-  
-  min(
-    x,
-    na.rm = TRUE
-  )
-}
-
-
-safe_max <- function(x) {
-  
-  if (all(is.na(x))) {
-    return(NA_real_)
-  }
-  
-  max(
-    x,
-    na.rm = TRUE
-  )
-}
-
-
-safe_percent <- function(numerator, denominator) {
-  
-  result <- 100 * numerator / denominator
-  
-  result[
-    is.na(denominator) |
-      denominator == 0
-  ] <- NA_real_
-  
-  result
-}
 
 # 04 Load data
 #===============================================================================
+
+
+if (file.exists(helper_script)) {
+  source(helper_script)
+} else {
+  warning(
+    "Helper-Script nicht gefunden: ",
+    helper_script,
+    "!!"
+  )
+}
+
 
 if (!file.exists(data_file)) {
   stop(
@@ -172,6 +282,7 @@ screening_raw <- readRDS(data_file)
 
 
 #===============================================================================
+
 
 # 05 Check required variables
 #===============================================================================
@@ -223,11 +334,13 @@ if (length(missing_variables) > 0) {
 
 #===============================================================================
 
+
 # 06 Check participant codes and duplicate rows
 #===============================================================================
 
 participant_code_check <- screening_raw %>%
   mutate(
+    Source_Row = row_number(),
     participant = clean_text(
       personalParticipantCode
     )
@@ -239,6 +352,10 @@ missing_participant_codes <- participant_code_check %>%
     is.na(
       participant
     )
+  ) %>%
+  select(
+    Source_Row,
+    personalParticipantCode
   )
 
 
@@ -268,23 +385,34 @@ if (nrow(missing_participant_codes) > 0) {
 
 
 if (nrow(duplicate_participants) > 0) {
-  
-  stop(
-    paste0(
-      nrow(duplicate_participants),
-      " Participant Codes kommen mehrfach im Screening-Datensatz vor. ",
-      "Da die Analyse auf Personenebene erfolgt, muss vor der Auswertung ",
-      "entschieden werden, welche Zeile je Person gültig ist. Es wird keine ",
-      "Zeile automatisch und damit potenziell willkürlich entfernt."
-    )
+  duplicate_message <- paste0(
+    nrow(duplicate_participants),
+    " Participant Codes kommen mehrfach im Screening-Datensatz vor: ",
+    paste(
+      duplicate_participants$participant,
+      collapse = ", "
+    ),
+    ". Es wird keine Zeile automatisch entfernt."
   )
+  
+  if (stop_on_duplicate_codes) {
+    stop(duplicate_message)
+  } else {
+    warning(
+      duplicate_message,
+      " stop_on_duplicate_codes = FALSE; Ergebnisse können dadurch ",
+      "Personen mehrfach gewichten."
+    )
+  }
 }
+
 
 # 07 Prepare filter variables
 #===============================================================================
 
 screening_all <- screening_raw %>%
   mutate(
+    Source_Row = row_number(),
     participant = clean_text(
       personalParticipantCode
     ),
@@ -299,9 +427,14 @@ screening_all <- screening_raw %>%
         intro_stop_usage
       ),
     
-    eligible_screening = (
+    eligible_screening = case_when(
+      is.na(intro_stop_age_logical) |
+        is.na(intro_stop_usage_logical) ~ NA,
+      
       intro_stop_age_logical %in% TRUE &
-        intro_stop_usage_logical %in% TRUE
+        intro_stop_usage_logical %in% TRUE ~ TRUE,
+      
+      TRUE ~ FALSE
     )
   )
 
@@ -337,8 +470,7 @@ eligibility_summary <- screening_all %>%
     ),
     
     N_Filter_Status_Missing = sum(
-      is.na(intro_stop_age_logical) |
-        is.na(intro_stop_usage_logical)
+      is.na(eligible_screening)
     )
   )
 
@@ -349,6 +481,7 @@ screening <- screening_all %>%
     eligible_screening %in% TRUE,
     !is.na(participant)
   )
+
 
 # 08 Recode numeric missing values and ensure numeric types
 #===============================================================================
@@ -378,10 +511,20 @@ numeric_screening_variables <- c(
 
 screening <- screening %>%
   mutate(
-    across(
-      all_of(numeric_screening_variables),
-      ~ suppressWarnings(as.numeric(.x))
+    intro_gender = recode_gender_numeric(
+      intro_gender
     ),
+    
+    across(
+      all_of(
+        setdiff(
+          numeric_screening_variables,
+          "intro_gender"
+        )
+      ),
+      ~ clean_numeric(.x)
+    ),
+    
     across(
       all_of(numeric_screening_variables),
       ~ na_if(.x, -1)
@@ -390,6 +533,7 @@ screening <- screening %>%
 
 
 #===============================================================================
+
 
 # 09 Validate scale ranges
 #===============================================================================
@@ -450,16 +594,84 @@ range_check <- purrr::imap_dfr(
   }
 )
 
+range_issues <- purrr::imap_dfr(
+  expected_ranges,
+  function(expected_range, variable_name) {
+    screening %>%
+      transmute(
+        Source_Row,
+        participant,
+        Variable = variable_name,
+        Value = .data[[variable_name]],
+        Expected_Minimum = expected_range[[1]],
+        Expected_Maximum = expected_range[[2]]
+      ) %>%
+      filter(
+        !is.na(Value),
+        Value < Expected_Minimum |
+          Value > Expected_Maximum
+      )
+  }
+)
+
+
 if (any(range_check$N_Outside_Expected_Range > 0)) {
+  affected_variables <- range_check %>%
+    filter(
+      N_Outside_Expected_Range > 0
+    ) %>%
+    pull(
+      Variable
+    )
   
-  warning(
-    "Mindestens eine Screening-Variable enthält Werte außerhalb ",
-    "des erwarteten Wertebereichs. Siehe Tabellenblatt 'Range_Check'."
+  range_examples <- range_issues %>%
+    mutate(
+      Example = paste0(
+        participant,
+        ": ",
+        Variable,
+        " = ",
+        Value
+      )
+    ) %>%
+    slice_head(
+      n = 10
+    ) %>%
+    pull(
+      Example
+    )
+  
+  range_message <- paste0(
+    nrow(range_issues),
+    " Werte außerhalb des erwarteten Bereichs in: ",
+    paste(
+      affected_variables,
+      collapse = ", "
+    ),
+    ". Beispiele: ",
+    paste(
+      range_examples,
+      collapse = "; "
+    ),
+    "."
   )
+  
+  if (stop_on_out_of_range) {
+    stop(
+      range_message,
+      " Setze stop_on_out_of_range nur für einen diagnostischen Lauf auf FALSE."
+    )
+  } else {
+    warning(
+      range_message,
+      " Die Werte bleiben unverändert im Datensatz."
+    )
+  }
 }
 
 
 #===============================================================================
+
 
 # 10 Label categorical variables
 #===============================================================================
@@ -516,6 +728,7 @@ screening <- screening %>%
 
 #===============================================================================
 
+
 # 11 Recode education
 #===============================================================================
 
@@ -553,6 +766,7 @@ screening <- screening %>%
 
 
 #===============================================================================
+
 
 # 12 Label platform frequency variables
 #===============================================================================
@@ -602,6 +816,7 @@ screening <- screening %>%
 
 #===============================================================================
 
+
 # 13 Weekly platform-use indicators
 #===============================================================================
 
@@ -636,6 +851,7 @@ screening <- screening %>%
 
 
 #===============================================================================
+
 
 # 14 Reverse coding and scale construction
 #===============================================================================
@@ -690,6 +906,374 @@ screening <- screening %>%
 #===============================================================================
 
 # 15 Reliability analysis
+#===============================================================================
+
+incidentality_items <- screening %>%
+  select(
+    all_of(
+      incidentality_index_items
+    )
+  )
+
+
+# The scale index requires complete responses. Reliability is therefore
+# estimated on the same complete-case set.
+incidentality_items_complete <- incidentality_items %>%
+  drop_na()
+
+
+reliability_data_valid <- function(data) {
+  nrow(data) >= 3 &&
+    ncol(data) >= 2 &&
+    all(
+      purrr::map_lgl(
+        data,
+        ~ dplyr::n_distinct(.x) >= 2
+      )
+    )
+}
+
+
+calculate_alpha_object <- function(
+    data,
+    warn_on_failure = TRUE
+) {
+  if (!reliability_data_valid(data)) {
+    if (warn_on_failure) {
+      warning(
+        paste0(
+          "Cronbachs Alpha konnte nicht berechnet werden: zu wenige ",
+          "vollständige Fälle oder mindestens ein Item ohne Varianz."
+        )
+      )
+    }
+    
+    return(NULL)
+  }
+  
+  tryCatch(
+    psych::alpha(
+      data,
+      check.keys = FALSE,
+      warnings = FALSE
+    ),
+    error = function(e) {
+      if (warn_on_failure) {
+        warning(
+          "Cronbachs Alpha konnte nicht berechnet werden: ",
+          conditionMessage(e)
+        )
+      }
+      
+      NULL
+    }
+  )
+}
+
+
+calculate_omega_object <- function(
+    data,
+    warn_on_failure = TRUE
+) {
+  if (!reliability_data_valid(data)) {
+    if (warn_on_failure) {
+      warning(
+        paste0(
+          "Omega total konnte nicht berechnet werden: zu wenige ",
+          "vollständige Fälle oder mindestens ein Item ohne Varianz."
+        )
+      )
+    }
+    
+    return(NULL)
+  }
+  
+  tryCatch(
+    {
+      omega_result <- NULL
+      
+      invisible(
+        capture.output(
+          omega_result <- suppressWarnings(
+            suppressMessages(
+              psych::omega(
+                data,
+                nfactors = 1,
+                plot = FALSE
+              )
+            )
+          ),
+          type = "output"
+        )
+      )
+      
+      omega_result
+    },
+    error = function(e) {
+      if (warn_on_failure) {
+        warning(
+          "Omega total konnte nicht berechnet werden: ",
+          conditionMessage(e)
+        )
+      }
+      
+      NULL
+    }
+  )
+}
+
+
+incidentality_alpha <- calculate_alpha_object(
+  incidentality_items_complete
+)
+
+incidentality_omega <- calculate_omega_object(
+  incidentality_items_complete
+)
+
+
+reliability_summary <- tibble(
+  Scale = "Incidentality",
+  
+  Number_of_Items = length(
+    incidentality_index_items
+  ),
+  
+  N_Complete = nrow(
+    incidentality_items_complete
+  ),
+  
+  Cronbach_Alpha = if (
+    is.null(incidentality_alpha)
+  ) {
+    NA_real_
+  } else {
+    unname(
+      incidentality_alpha$total$raw_alpha
+    )
+  },
+  
+  Standardized_Alpha = if (
+    is.null(incidentality_alpha)
+  ) {
+    NA_real_
+  } else {
+    unname(
+      incidentality_alpha$total$std.alpha
+    )
+  },
+  
+  Omega_Total = if (
+    is.null(incidentality_omega)
+  ) {
+    NA_real_
+  } else {
+    unname(
+      incidentality_omega$omega.tot
+    )
+  },
+  
+  Threshold = reliability_threshold,
+  
+  Note = paste0(
+    "Berichtet wird Omega total. Omega hierarchical ist bei einem ",
+    "eindimensionalen Ein-Faktor-Modell nicht sinnvoll interpretierbar."
+  )
+)
+
+
+alpha_item_statistics <- if (
+  is.null(incidentality_alpha)
+) {
+  tibble(
+    Item = character(),
+    N = numeric(),
+    Raw_R = numeric(),
+    Standardized_R = numeric(),
+    Corrected_Item_Total_R = numeric(),
+    Mean = numeric(),
+    SD = numeric(),
+    Alpha_If_Deleted = numeric()
+  )
+  
+} else {
+  incidentality_alpha$item.stats %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(
+      var = "Item"
+    ) %>%
+    as_tibble() %>%
+    transmute(
+      Item = Item,
+      N = n,
+      Raw_R = raw.r,
+      Standardized_R = std.r,
+      Corrected_Item_Total_R = r.drop,
+      Mean = mean,
+      SD = sd
+    ) %>%
+    left_join(
+      incidentality_alpha$alpha.drop %>%
+        as.data.frame() %>%
+        tibble::rownames_to_column(
+          var = "Item"
+        ) %>%
+        as_tibble() %>%
+        transmute(
+          Item = Item,
+          Alpha_If_Deleted = raw_alpha
+        ),
+      by = "Item"
+    )
+}
+
+
+omega_if_item_deleted <- purrr::map_dfr(
+  incidentality_index_items,
+  function(item_removed) {
+    reduced_data <- incidentality_items_complete %>%
+      select(
+        -all_of(
+          item_removed
+        )
+      )
+    
+    alpha_reduced <- calculate_alpha_object(
+      reduced_data,
+      warn_on_failure = FALSE
+    )
+    
+    omega_reduced <- calculate_omega_object(
+      reduced_data,
+      warn_on_failure = FALSE
+    )
+    
+    tibble(
+      Item_Removed = item_removed,
+      N_Complete = nrow(reduced_data),
+      Number_of_Items = ncol(reduced_data),
+      Cronbach_Alpha = if (
+        is.null(alpha_reduced)
+      ) {
+        NA_real_
+      } else {
+        unname(
+          alpha_reduced$total$raw_alpha
+        )
+      },
+      Omega_Total = if (
+        is.null(omega_reduced)
+      ) {
+        NA_real_
+      } else {
+        unname(
+          omega_reduced$omega.tot
+        )
+      }
+    )
+  }
+) %>%
+  mutate(
+    Exceeds_Threshold = Omega_Total >= reliability_threshold
+  ) %>%
+  arrange(
+    desc(Omega_Total)
+  )
+
+
+best_item_deletion <- omega_if_item_deleted %>%
+  filter(
+    !is.na(Omega_Total)
+  ) %>%
+  slice_max(
+    Omega_Total,
+    n = 1,
+    with_ties = FALSE
+  )
+
+
+reliability_decision <- tibble(
+  Original_Number_of_Items = length(
+    incidentality_index_items
+  ),
+  
+  Original_Omega_Total = reliability_summary$Omega_Total,
+  
+  Reliability_Threshold = reliability_threshold,
+  
+  Best_Item_to_Remove = if (
+    nrow(best_item_deletion) == 0
+  ) {
+    NA_character_
+  } else {
+    best_item_deletion$Item_Removed[[1]]
+  },
+  
+  Best_Omega_After_Deletion = if (
+    nrow(best_item_deletion) == 0
+  ) {
+    NA_real_
+  } else {
+    best_item_deletion$Omega_Total[[1]]
+  },
+  
+  Automatic_Exclusion_Applied = FALSE,
+  
+  Recommendation = case_when(
+    is.na(reliability_summary$Omega_Total) ~
+      "Keine Entscheidung möglich; Reliabilität konnte nicht geschätzt werden.",
+    
+    reliability_summary$Omega_Total >= reliability_threshold ~
+      paste0(
+        "Kein Itemausschluss aufgrund des Schwellenwerts erforderlich; ",
+        "Omega total liegt bei oder über ",
+        reliability_threshold,
+        "."
+      ),
+    
+    nrow(best_item_deletion) > 0 &&
+      best_item_deletion$Omega_Total[[1]] >= reliability_threshold ~
+      paste0(
+        "Die präregistrierte Ausschlussoption ist rechnerisch relevant. ",
+        "Vor einer Änderung müssen Iteminhalt und Skalenvalidität geprüft ",
+        "und die Entscheidung dokumentiert werden."
+      ),
+    
+    TRUE ~
+      paste0(
+        "Kein einzelner Itemausschluss hebt Omega total auf den ",
+        "Referenzwert. Skala unverändert berichten und Einschränkung ",
+        "diskutieren."
+      )
+  )
+)
+
+
+incidentality_interitem_correlations <- if (
+  reliability_data_valid(
+    incidentality_items_complete
+  )
+) {
+  cor(
+    incidentality_items_complete,
+    use = "complete.obs",
+    method = "pearson"
+  ) %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(
+      "Item"
+    ) %>%
+    as_tibble()
+  
+} else {
+  tibble(
+    Note = paste0(
+      "Inter-Item-Korrelationen konnten wegen zu weniger vollständiger ",
+      "Fälle oder fehlender Itemvarianz nicht berechnet werden."
+    )
+  )
+}
+
 #===============================================================================
 
 incidentality_items <- screening %>%
@@ -893,6 +1477,7 @@ incidentality_interitem_correlations <- if (
   )
 }
 
+
 # 16 Overall sample description
 #===============================================================================
 
@@ -914,7 +1499,7 @@ sample_overview <- tibble(
     ),
     
     n_distinct(
-      screening_raw$personalParticipantCode,
+      participant_code_check$participant,
       na.rm = TRUE
     ),
     
@@ -973,6 +1558,7 @@ education_three_level_summary <- frequency_summary(
   "Bildung, dreistufig"
 )
 
+
 # 17 Usage intensity
 #===============================================================================
 
@@ -990,6 +1576,7 @@ usage_intensity_distribution <- item_distribution(
 
 
 #===============================================================================
+
 
 # 18 Platform-use data in long format
 #===============================================================================
@@ -1167,6 +1754,7 @@ platform_distribution <- platform_long %>%
     Platform,
     Usage_Frequency
   )
+
 
 # 19 Information needs
 #===============================================================================
@@ -1364,6 +1952,7 @@ information_needs_distribution <- information_needs_long %>%
     Importance
   )
 
+
 # 20 Incidentality
 #===============================================================================
 
@@ -1502,6 +2091,7 @@ incidentality_scored_distribution <- incidentality_scored_items_long %>%
     Response
   )
 
+
 # 21 Typical usage contexts
 #===============================================================================
 
@@ -1524,6 +2114,7 @@ context_summary <- bind_rows(
 
 
 #===============================================================================
+
 
 # 22 Missing-data overview
 #===============================================================================
@@ -1572,6 +2163,7 @@ missing_data_summary <- purrr::map_dfr(
 
 
 #===============================================================================
+
 
 # 23 Compact Table 1
 #===============================================================================
@@ -1686,6 +2278,7 @@ table_1 <- bind_rows(
   table_1_education
 )
 
+
 # 24 Exploratory platform profiles
 #===============================================================================
 
@@ -1762,18 +2355,23 @@ platform_profile <- platform_long %>%
           na.rm = TRUE
         )
         
-        paste(
-          as.character(
-            Platform[
-              !is.na(
-                Usage_Frequency
-              ) &
-                Usage_Frequency ==
-                maximum_frequency
-            ]
-          ),
-          collapse = " / "
-        )
+        if (maximum_frequency <= 1) {
+          "Keine Plattform genutzt"
+        } else {
+          paste(
+            as.character(
+              Platform[
+                !is.na(
+                  Usage_Frequency
+                ) &
+                  Usage_Frequency ==
+                  maximum_frequency &
+                  Usage_Frequency > 1
+              ]
+            ),
+            collapse = " / "
+          )
+        }
       }
     },
     
@@ -1865,6 +2463,87 @@ screening <- screening %>%
       ordered_result = TRUE
     )
   )
+
+
+eligibility_consistency <- screening %>%
+  transmute(
+    participant,
+    Stop_Usage_Passed = intro_stop_usage_logical,
+    N_Platforms_Weekly,
+    
+    Detailed_Frequencies_Support_Eligibility = case_when(
+      is.na(N_Platforms_Weekly) ~ NA,
+      N_Platforms_Weekly >= 1 ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    
+    Consistency_Status = case_when(
+      is.na(N_Platforms_Weekly) ~
+        "Nicht prüfbar: alle Plattformfrequenzen fehlen",
+      
+      N_Platforms_Weekly >= 1 ~
+        "Konsistent",
+      
+      TRUE ~
+        paste0(
+          "Inkonsistent: Stop-Item bestanden, aber keine Plattform ",
+          "mindestens wöchentlich angegeben"
+        )
+    )
+  )
+
+
+screening <- screening %>%
+  left_join(
+    eligibility_consistency %>%
+      transmute(
+        participant,
+        platform_eligibility_consistent =
+          Detailed_Frequencies_Support_Eligibility,
+        platform_eligibility_status =
+          Consistency_Status
+      ),
+    by = "participant"
+  )
+
+
+n_eligibility_inconsistencies <- eligibility_consistency %>%
+  summarise(
+    N = sum(
+      Detailed_Frequencies_Support_Eligibility %in% FALSE,
+      na.rm = TRUE
+    )
+  ) %>%
+  pull(N)
+
+
+if (n_eligibility_inconsistencies > 0) {
+  warning(
+    n_eligibility_inconsistencies,
+    " teilnahmeberechtigte Personen weisen in den detaillierten ",
+    "Plattformfrequenzen keine mindestens wöchentliche Nutzung auf. ",
+    "Siehe 'Eligibility_Consistency'."
+  )
+}
+
+
+sample_overview <- bind_rows(
+  sample_overview,
+  tibble(
+    Indicator = c(
+      "Inkonsistenzen zwischen Nutzungs-Stop-Item und Plattformfrequenzen",
+      "Nicht prüfbare Plattform-Eligibility wegen vollständig fehlender Frequenzen"
+    ),
+    Value = c(
+      n_eligibility_inconsistencies,
+      sum(
+        is.na(
+          eligibility_consistency$Detailed_Frequencies_Support_Eligibility
+        )
+      )
+    )
+  )
+)
 
 
 platform_repertoire_summary <- screening %>%
@@ -2025,6 +2704,7 @@ platform_co_use_summary <- purrr::map_dfr(
   }
 )
 
+
 # 25 Exploratory information-need profiles
 #===============================================================================
 
@@ -2152,6 +2832,7 @@ information_need_profile_summary <- screening %>%
       Number_of_High_Needs
     )
   )
+
 
 # 26 Incidentality item diagnostics
 #===============================================================================
@@ -2312,6 +2993,7 @@ incidentality_index_floor_ceiling <- screening %>%
     )
   )
 
+
 # 27 Descriptive subgroup summaries
 #===============================================================================
 
@@ -2420,7 +3102,203 @@ incidentality_subgroup_summary <- bind_rows(
   )
 )
 
-# 28 Exploratory Spearman correlations
+
+#===============================================================================
+# 28A Exploratory subgroup summaries of central screening measures
+#===============================================================================
+
+screening_measure_labels <- c(
+  intro_intensity = "Nutzungsintensität",
+  intro_ib_undirected = "Informationsbedürfnis: ungerichtet",
+  intro_ib_thematic = "Informationsbedürfnis: thematisch",
+  intro_ib_social = "Informationsbedürfnis: sozial",
+  intro_ib_problem = "Informationsbedürfnis: problembezogen",
+  incidentality_index = "Incidentality-Index"
+)
+
+
+summarise_screening_measures_by_group <- function(
+    data,
+    group_variable,
+    group_label
+) {
+  data %>%
+    transmute(
+      Group = as.character(
+        .data[[group_variable]]
+      ),
+      across(
+        all_of(
+          names(screening_measure_labels)
+        )
+      )
+    ) %>%
+    filter(
+      !is.na(Group)
+    ) %>%
+    pivot_longer(
+      cols = all_of(
+        names(screening_measure_labels)
+      ),
+      names_to = "Measure_Variable",
+      values_to = "Value"
+    ) %>%
+    mutate(
+      Measure = unname(
+        screening_measure_labels[
+          Measure_Variable
+        ]
+      )
+    ) %>%
+    group_by(
+      Group,
+      Measure
+    ) %>%
+    summarise(
+      N_Valid = sum(
+        !is.na(Value)
+      ),
+      Mean = safe_mean(Value),
+      SD = safe_sd(Value),
+      Median = safe_median(Value),
+      Minimum = safe_min(Value),
+      Maximum = safe_max(Value),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      Grouping_Variable = group_label,
+      .before = 1
+    )
+}
+
+
+exploratory_subgroup_summary <- bind_rows(
+  summarise_screening_measures_by_group(
+    screening,
+    "age_group",
+    "Altersgruppe"
+  ),
+  summarise_screening_measures_by_group(
+    screening,
+    "gender",
+    "Geschlecht"
+  ),
+  summarise_screening_measures_by_group(
+    screening,
+    "education_three_level",
+    "Bildungsniveau"
+  ),
+  summarise_screening_measures_by_group(
+    screening,
+    "Platform_Repertoire",
+    "Plattformrepertoire"
+  )
+)
+
+
+#===============================================================================
+
+# 28B Exploratory age correlations
+#===============================================================================
+
+age_marker_data <- screening %>%
+  transmute(
+    Alter = intro_age_num,
+    Nutzungsintensität = intro_intensity,
+    `Genutzte Plattformen` = N_Platforms_Used,
+    `Wöchentlich genutzte Plattformen` = N_Platforms_Weekly,
+    `Täglich genutzte Plattformen` = N_Platforms_Daily,
+    `Informationsbedürfnis: ungerichtet` = intro_ib_undirected,
+    `Informationsbedürfnis: thematisch` = intro_ib_thematic,
+    `Informationsbedürfnis: sozial` = intro_ib_social,
+    `Informationsbedürfnis: problembezogen` = intro_ib_problem,
+    `Mittlere Wichtigkeit der Informationsbedürfnisse` = Mean_Importance,
+    `Differenzierung der Informationsbedürfnisse` = Need_Differentiation,
+    Incidentality = incidentality_index
+  )
+
+
+calculate_spearman_with_age <- function(
+    data,
+    marker
+) {
+  pair_data <- data %>%
+    select(
+      Alter,
+      all_of(marker)
+    ) %>%
+    drop_na()
+  
+  if (
+    nrow(pair_data) < 3 ||
+    n_distinct(pair_data$Alter) < 2 ||
+    n_distinct(pair_data[[marker]]) < 2
+  ) {
+    return(
+      tibble(
+        Marker = marker,
+        N = nrow(pair_data),
+        Spearman_Rho = NA_real_,
+        P_Value = NA_real_
+      )
+    )
+  }
+  
+  test <- suppressWarnings(
+    cor.test(
+      pair_data$Alter,
+      pair_data[[marker]],
+      method = "spearman",
+      exact = FALSE
+    )
+  )
+  
+  tibble(
+    Marker = marker,
+    N = nrow(pair_data),
+    Spearman_Rho = unname(
+      test$estimate
+    ),
+    P_Value = test$p.value
+  )
+}
+
+
+age_markers <- setdiff(
+  names(age_marker_data),
+  "Alter"
+)
+
+
+age_correlations <- purrr::map_dfr(
+  age_markers,
+  ~ calculate_spearman_with_age(
+    age_marker_data,
+    .x
+  )
+) %>%
+  mutate(
+    P_Adjusted_BH = p.adjust(
+      P_Value,
+      method = "BH"
+    ),
+    Analysis_Type = "Explorativ",
+    Note = paste0(
+      "Alter wird kontinuierlich analysiert. Die Altersgruppen dienen nur ",
+      "der deskriptiven Darstellung."
+    )
+  ) %>%
+  arrange(
+    desc(
+      abs(Spearman_Rho)
+    )
+  )
+
+
+#===============================================================================
+
+#===============================================================================
+# 28C Exploratory Spearman correlations with Incidentality
 #===============================================================================
 
 # Präregistrierungsnaher Fokus:
@@ -2470,7 +3348,13 @@ correlation_data <- screening %>%
       intro_ib_social,
     
     `Informationsbedürfnis: problembezogen` =
-      intro_ib_problem
+      intro_ib_problem,
+    
+    `Mittlere Wichtigkeit der Informationsbedürfnisse` =
+      Mean_Importance,
+    
+    `Differenzierung der Informationsbedürfnisse` =
+      Need_Differentiation
   )
 
 
@@ -2574,6 +3458,7 @@ exploratory_correlations <- purrr::map_dfr(
     )
   )
 
+
 # 29 Save prepared data
 #===============================================================================
 
@@ -2595,11 +3480,16 @@ saveRDS(
       incidentality_items_complete,
     alpha_item_statistics =
       alpha_item_statistics,
+    omega_if_item_deleted =
+      omega_if_item_deleted,
+    reliability_decision =
+      reliability_decision,
     interitem_correlations =
       incidentality_interitem_correlations
   ),
   reliability_rds
 )
+
 
 # 30 Create Excel workbook
 #===============================================================================
@@ -2616,31 +3506,134 @@ header_style <- openxlsx::createStyle(
 
 analysis_settings <- tibble(
   Setting = c(
+    "Script version",
+    "Input file",
     "Eligibility",
+    "Duplicate-code action",
+    "Out-of-range action",
     "Weekly platform use",
     "Daily platform use",
     "Incidentality index",
-    "Reliability",
+    "Reliability sample",
+    "Reliability threshold",
+    "Omega reported",
+    "Automatic item exclusion",
     "Exploratory correlations",
-    "Multiplicity adjustment"
+    "Multiplicity adjustment",
+    "Create figures",
+    "Overwrite outputs"
   ),
   
   Value = c(
-    "Beide Screening-Stop-Filter müssen TRUE sein",
+    analysis_version,
+    data_file,
+    "Beide Screening-Stop-Filter müssen TRUE sein; Participant Code erforderlich",
+    if_else(
+      stop_on_duplicate_codes,
+      "Stop",
+      "Warnung und Fälle behalten"
+    ),
+    if_else(
+      stop_on_out_of_range,
+      "Stop",
+      "Warnung und Werte behalten"
+    ),
     "Nutzungsfrequenzcodes 5–8",
     "Nutzungsfrequenzcodes 7–8",
-    "Mittelwert aller sechs beantworteten Items; Item 5 invertiert",
-    "Cronbachs Alpha und Omega total auf Basis vollständiger Fälle",
-    "Spearman-Korrelationen mit Incidentality als Fokusvariable",
-    "Benjamini-Hochberg-Korrektur"
+    "Mittelwert aller sechs Items; Item 5 invertiert; vollständige Fälle",
+    "Dieselben vollständigen Fälle wie für den Index",
+    as.character(reliability_threshold),
+    "Omega total aus Ein-Faktor-Lösung",
+    "Nein; Item-Deletion wird nur diagnostisch ausgegeben",
+    "Spearman-Korrelationen mit Incidentality bzw. Alter als Fokus",
+    "Benjamini-Hochberg innerhalb der jeweiligen Korrelationsfamilie",
+    as.character(create_figures),
+    as.character(overwrite_outputs)
   )
 )
+
+
+variable_codebook <- tribble(
+  ~Variable, ~Construct, ~Coding_or_Range, ~Analysis_Role, ~Notes,
+  "participant", "Pseudonymous identifier", "Cleaned character code", "Linkage and person-level key", "Derived from personalParticipantCode",
+  "intro_stop_age", "Age eligibility", "Yes/No", "Eligibility gate", "Recoded with as_logical_safe()",
+  "intro_stop_usage", "Usage eligibility", "Yes/No", "Eligibility gate", "At least weekly use of one investigated platform for publicly relevant information",
+  "intro_age_num", "Age", "60 years and older expected", "Description and exploration", "Continuous age is preferred over arbitrary groups",
+  "intro_gender", "Gender", "1 = female; 2 = male; 3 = diverse", "Description and exploration", "Verify export coding if questionnaire changes",
+  "intro_education", "Highest educational qualification", "1–8", "Detailed description", "Code 8 = other qualification",
+  "education_three_level", "Education, exploratory recode", "Low / Medium / High", "Exploratory subgroup variable", "Other qualification remains unclassified",
+  "intro_freq_facebook", "Facebook-use frequency", "1 = never ... 8 = several times daily", "Platform profile", "Ordinal response scale",
+  "intro_freq_instagram", "Instagram-use frequency", "1 = never ... 8 = several times daily", "Platform profile", "Ordinal response scale",
+  "intro_freq_tiktok", "TikTok-use frequency", "1 = never ... 8 = several times daily", "Platform profile", "Ordinal response scale",
+  "intro_freq_x", "X-use frequency", "1 = never ... 8 = several times daily", "Platform profile", "Ordinal response scale",
+  "intro_intensity", "General social-media-use intensity", "1–7", "Description and exploration", "Interpret according to questionnaire anchors",
+  "intro_ib_undirected", "Undirected information need", "1 = not important ... 5 = very important", "Information-needs profile", "News and current affairs orientation",
+  "intro_ib_thematic", "Thematic information need", "1–5", "Information-needs profile", "Personal topics and interests",
+  "intro_ib_social", "Social information need", "1–5", "Information-needs profile", "Updates from the social environment",
+  "intro_ib_problem", "Problem-related information need", "1–5", "Information-needs profile", "Solving concrete problems",
+  "intro_incidentality_1", "Screening incidentality item 1", "1 = strongly disagree ... 5 = strongly agree", "Incidentality scale", "Come across information that would otherwise be missed",
+  "intro_incidentality_2", "Screening incidentality item 2", "1–5", "Incidentality scale", "Find information that would otherwise not be read",
+  "intro_incidentality_3", "Screening incidentality item 3", "1–5", "Incidentality scale", "Stumble upon new and interesting information",
+  "intro_incidentality_4", "Screening incidentality item 4", "1–5", "Incidentality scale", "Exposure to information not normally sought",
+  "intro_incidentality_5", "Screening incidentality item 5", "1–5", "Incidentality scale", "Negatively worded and reverse-coded",
+  "intro_incidentality_6", "Screening incidentality item 6", "1–5", "Incidentality scale", "Unintentionally read information posted by others",
+  "incidentality_index", "General screening incidentality", "Mean 1–5", "Description and downstream calibration", "All six items required; item 5 reversed",
+  "intro_context_local", "Typical spatial context", "1 = home; 2 = out; 3 = both similarly", "Description and downstream calibration", "General self-report",
+  "intro_context_situation", "Typical social context", "1 = mostly alone; 2 = mostly together; 3 = both similarly", "Description and downstream calibration", "General self-report",
+  "N_Platforms_Used", "Platform repertoire", "0–4", "Derived screening marker", "Frequency above never",
+  "N_Platforms_Weekly", "Weekly platform repertoire", "0–4", "Derived screening marker", "Frequency code 5–8",
+  "N_Platforms_Daily", "Daily platform repertoire", "0–4", "Derived screening marker", "Frequency code 7–8",
+  "platform_eligibility_consistent", "Eligibility consistency", "TRUE / FALSE / missing", "Quality-control marker", "Compares weekly stop item with detailed frequency responses",
+  "Primary_Platform", "Highest-frequency platform", "Platform name or tied names", "Derived screening marker", "May contain multiple platforms",
+  "Need_Differentiation", "Within-person need differentiation", "Maximum minus minimum need score", "Exploratory profile marker", "Not a validated scale"
+)
+
+
+output_manifest <- tribble(
+  ~Output, ~Type, ~Description,
+  output_excel, "Excel", "All screening results, documentation and quality checks",
+  output_rds, "RDS", "Prepared eligible participant-level screening data",
+  reliability_rds, "RDS", "Reliability objects and item diagnostics",
+  file.path(figure_folder, "Screening_Age.png"), "PNG", "Age distribution",
+  file.path(figure_folder, "Screening_Gender.png"), "PNG", "Gender frequencies",
+  file.path(figure_folder, "Screening_Education.png"), "PNG", "Three-level education frequencies",
+  file.path(figure_folder, "Screening_Platform_Weekly.png"), "PNG", "Weekly platform use",
+  file.path(figure_folder, "Screening_Platform_Frequencies.png"), "PNG", "Full platform-frequency distributions",
+  file.path(figure_folder, "Screening_Usage_Intensity.png"), "PNG", "Usage-intensity distribution",
+  file.path(figure_folder, "Screening_Information_Needs.png"), "PNG", "Information-need means and confidence intervals",
+  file.path(figure_folder, "Screening_Information_Need_Distributions.png"), "PNG", "Information-need response distributions",
+  file.path(figure_folder, "Screening_Incidentality_Index.png"), "PNG", "Incidentality-index distribution",
+  file.path(figure_folder, "Screening_Incidentality_Items.png"), "PNG", "Directionally aligned item distributions",
+  file.path(figure_folder, "Screening_Contexts.png"), "PNG", "Typical local and social contexts",
+  file.path(figure_folder, "Screening_Platform_Repertoire.png"), "PNG", "Weekly platform-repertoire size",
+  file.path(figure_folder, "Screening_Incidentality_Correlations.png"), "PNG", "Exploratory Incidentality correlations"
+) %>%
+  mutate(
+    Created = case_when(
+      Type == "PNG" ~ create_figures,
+      TRUE ~ TRUE
+    )
+  )
 
 
 add_excel_sheet(
   workbook,
   "Analysis_Settings",
   analysis_settings,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Variable_Codebook",
+  variable_codebook,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Output_Manifest",
+  output_manifest,
   header_style
 )
 
@@ -2655,6 +3648,13 @@ add_excel_sheet(
   workbook,
   "Eligibility",
   eligibility_summary,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Eligibility_Consistency",
+  eligibility_consistency,
   header_style
 )
 
@@ -2676,6 +3676,13 @@ add_excel_sheet(
   workbook,
   "Range_Check",
   range_check,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Range_Issues",
+  range_issues,
   header_style
 )
 
@@ -2884,8 +3891,22 @@ add_excel_sheet(
 
 add_excel_sheet(
   workbook,
+  "Reliability_Decision",
+  reliability_decision,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
   "Alpha_Item_Statistics",
   alpha_item_statistics,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Omega_Item_Deleted",
+  omega_if_item_deleted,
   header_style
 )
 
@@ -2912,8 +3933,22 @@ add_excel_sheet(
 
 add_excel_sheet(
   workbook,
+  "Exploratory_Subgroups",
+  exploratory_subgroup_summary,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
   "Exploratory_Correlations",
   exploratory_correlations,
+  header_style
+)
+
+add_excel_sheet(
+  workbook,
+  "Age_Correlations",
+  age_correlations,
   header_style
 )
 
@@ -2921,8 +3956,9 @@ add_excel_sheet(
 openxlsx::saveWorkbook(
   workbook,
   file = output_excel,
-  overwrite = TRUE
+  overwrite = overwrite_outputs
 )
+
 
 # 31 Visual design
 #===============================================================================
@@ -2938,13 +3974,6 @@ project_colors <- c(
   white = "#FFFFFF"
 )
 
-
-platform_colors <- c(
-  Facebook = "#315F6B",
-  Instagram = "#4F7E82",
-  TikTok = "#78999E",
-  X = "#65747B"
-)
 
 
 theme_project <- function(base_size = 12) {
@@ -3050,6 +4079,11 @@ save_project_plot <- function(
     width = 7,
     height = 5
 ) {
+  if (!create_figures) {
+    return(
+      invisible(NULL)
+    )
+  }
   
   ggsave(
     filename = file.path(
@@ -3068,6 +4102,7 @@ save_project_plot <- function(
 
 
 #===============================================================================
+
 
 # 32 Figure: Age distribution
 #===============================================================================
@@ -3169,6 +4204,7 @@ save_project_plot(
 
 #===============================================================================
 
+
 # 33 Figure: Gender
 #===============================================================================
 
@@ -3235,6 +4271,7 @@ save_project_plot(
 
 #===============================================================================
 
+
 # 34 Figure: Education
 #===============================================================================
 
@@ -3300,6 +4337,7 @@ save_project_plot(
 
 
 #===============================================================================
+
 
 # 35 Figure: Weekly platform use
 #===============================================================================
@@ -3405,6 +4443,7 @@ save_project_plot(
 
 #===============================================================================
 
+
 # 36 Figure: Platform-use frequency distributions
 #===============================================================================
 
@@ -3500,6 +4539,7 @@ save_project_plot(
 
 #===============================================================================
 
+
 # 37 Figure: Usage intensity
 #===============================================================================
 
@@ -3572,6 +4612,7 @@ save_project_plot(
   height = 5
 )
 
+
 # 38 Figure: Information-needs means
 #===============================================================================
 
@@ -3609,11 +4650,13 @@ figure_information_needs <- ggplot(
     linewidth = 0.85
   ) +
   scale_y_continuous(
-    limits = c(
+    breaks = 1:5
+  ) +
+  coord_cartesian(
+    ylim = c(
       1,
       5
-    ),
-    breaks = 1:5
+    )
   ) +
   labs(
     title = "Informationsbedürfnisse",
@@ -3632,6 +4675,7 @@ save_project_plot(
 
 
 #===============================================================================
+
 
 # 39 Figure: Information-needs distributions
 #===============================================================================
@@ -3717,6 +4761,7 @@ save_project_plot(
   width = 11,
   height = 7
 )
+
 
 # 40 Figure: Incidentality index
 #===============================================================================
@@ -3812,6 +4857,7 @@ save_project_plot(
 
 #===============================================================================
 
+
 # 41 Figure: Incidentality-item distributions
 #===============================================================================
 
@@ -3903,6 +4949,7 @@ save_project_plot(
   width = 11,
   height = 9
 )
+
 
 # 42 Figure: Typical contexts
 #===============================================================================
@@ -4046,6 +5093,7 @@ save_project_plot(
 )
 #===============================================================================
 
+
 # 43 Figure: Platform repertoire
 #===============================================================================
 
@@ -4102,6 +5150,7 @@ save_project_plot(
   width = 8,
   height = 5
 )
+
 
 # 44 Figure: Exploratory correlations with Incidentality
 #===============================================================================
@@ -4217,6 +5266,7 @@ save_project_plot(
   height = 8
 )
 
+
 # 45 Console report
 #===============================================================================
 
@@ -4311,6 +5361,24 @@ cat(
   sum(
     !is.na(
       exploratory_correlations$Spearman_Rho
+    )
+  ),
+  "\n",
+  sep = ""
+)
+
+cat(
+  "Eligibility consistency issues: ",
+  n_eligibility_inconsistencies,
+  "\n",
+  sep = ""
+)
+
+cat(
+  "Exploratory age correlations: ",
+  sum(
+    !is.na(
+      age_correlations$Spearman_Rho
     )
   ),
   "\n",
