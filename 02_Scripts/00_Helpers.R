@@ -1590,3 +1590,145 @@ add_excel_sheet <- function(
   
   invisible(workbook)
 }
+
+
+#===============================================================================
+# 09 Visual design
+#===============================================================================
+# Einheitliches, zurückhaltendes Projektdesign für alle ggplot-Grafiken.
+# Die Funktionen setzen nur Darstellungselemente; Daten und Skalenlogik bleiben
+# in den jeweiligen Analyseskripten. Dadurch sehen Screening, Daily und Outro
+# konsistent aus, ohne dass die Plots technisch aneinander gekoppelt werden.
+
+project_colors <- c(
+  primary   = "#315F6B",  # dunkles Petrol – Hauptfarbe
+  secondary = "#78999E",  # gedämpftes Petrol
+  accent    = "#C49A5A",  # warmes Ocker – Hervorhebungen
+  blue      = "#58788D",
+  green     = "#718B78",
+  violet    = "#756F8D",
+  red       = "#A9635C",
+  dark      = "#26383F",
+  medium    = "#66777D",
+  light     = "#E8EFF1",
+  lighter   = "#F5F8F8",
+  grid      = "#DCE4E6",
+  white     = "#FFFFFF"
+)
+
+project_palette <- unname(
+  project_colors[c(
+    "primary", "accent", "secondary", "blue",
+    "green", "violet", "red", "medium"
+  )]
+)
+
+# Basistheme: klare Typohierarchie, zurückhaltendes Grid, kompakte Legende und
+# etwas mehr Weißraum als theme_minimal(). Für einzelne Plots können Elemente
+# anschließend wie gewohnt mit theme(...) überschrieben werden.
+theme_project <- function(
+    base_size = 12,
+    base_family = "sans",
+    legend_position = "bottom"
+) {
+  ggplot2::theme_minimal(
+    base_size = base_size,
+    base_family = base_family
+  ) +
+    ggplot2::theme(
+      plot.background = ggplot2::element_rect(
+        fill = unname(project_colors["white"]),
+        colour = NA
+      ),
+      panel.background = ggplot2::element_rect(
+        fill = unname(project_colors["white"]),
+        colour = NA
+      ),
+      plot.title = ggplot2::element_text(
+        colour = unname(project_colors["dark"]),
+        face = "bold",
+        size = ggplot2::rel(1.22),
+        margin = ggplot2::margin(b = 5)
+      ),
+      plot.subtitle = ggplot2::element_text(
+        colour = unname(project_colors["medium"]),
+        size = ggplot2::rel(0.94),
+        lineheight = 1.08,
+        margin = ggplot2::margin(b = 11)
+      ),
+      plot.caption = ggplot2::element_text(
+        colour = unname(project_colors["medium"]),
+        size = ggplot2::rel(0.78),
+        hjust = 0,
+        lineheight = 1.05,
+        margin = ggplot2::margin(t = 10)
+      ),
+      axis.title = ggplot2::element_text(
+        colour = unname(project_colors["dark"]),
+        face = "bold",
+        size = ggplot2::rel(0.94)
+      ),
+      axis.text = ggplot2::element_text(
+        colour = unname(project_colors["dark"]),
+        size = ggplot2::rel(0.90)
+      ),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(
+        colour = unname(project_colors["grid"]),
+        linewidth = 0.35
+      ),
+      strip.background = ggplot2::element_rect(
+        fill = unname(project_colors["lighter"]),
+        colour = NA
+      ),
+      strip.text = ggplot2::element_text(
+        colour = unname(project_colors["dark"]),
+        face = "bold",
+        margin = ggplot2::margin(t = 6, r = 6, b = 6, l = 6)
+      ),
+      legend.position = legend_position,
+      legend.title = ggplot2::element_text(face = "bold"),
+      legend.text = ggplot2::element_text(
+        colour = unname(project_colors["dark"])
+      ),
+      legend.key.height = grid::unit(0.45, "cm"),
+      legend.key.width = grid::unit(0.65, "cm"),
+      plot.margin = ggplot2::margin(12, 18, 12, 12)
+    )
+}
+
+# Gemeinsame diskrete Farbskalen. Die Palette ist bewusst klein und gedämpft
+# und für kompakte kategoriale Darstellungen mit wenigen Gruppen gedacht.
+scale_fill_project <- function(..., values = project_palette, drop = FALSE) {
+  ggplot2::scale_fill_manual(
+    values = values,
+    drop = drop,
+    ...
+  )
+}
+
+scale_color_project <- function(..., values = project_palette, drop = FALSE) {
+  ggplot2::scale_color_manual(
+    values = values,
+    drop = drop,
+    ...
+  )
+}
+
+# Einheitliche Speicherung: weißer Hintergrund, publication-taugliche Auflösung.
+save_project_plot <- function(
+    plot,
+    filename,
+    width,
+    height,
+    dpi = 320
+) {
+  ggplot2::ggsave(
+    filename = filename,
+    plot = plot,
+    width = width,
+    height = height,
+    dpi = dpi,
+    bg = unname(project_colors["white"])
+  )
+}

@@ -1,95 +1,49 @@
 ################################################################################
-# Project: Tagebuchstudie
-# File:    04c_Outro_analysis.R
+# Project: Tagebuchstudie – öffentlich relevante Informationsnutzung
+# File:    04c_Outro_Analysis.R
+# Version: 2026-08-10
 #
 # Purpose:
-#   Aufbereitung und deskriptive Auswertung der Abschlussbefragung.
+#   Kompakte Auswertung der Abschlussbefragung. Im Mittelpunkt stehen die
+#   methodisch relevanten Fragen: Hat die Teilnahme das Verhalten verändert
+#   (Reaktivität)? Wie gut war die App nutzbar? Lassen sich diese Angaben in
+#   ausgewählten Diary-Mustern wiederfinden?
 #
-# Analyseschritte:
-#   1. Outro-Daten automatisch im Ordner 01_Data identifizieren
-#   2. Variablen und fehlende Werte aufbereiten
-#   3. Analysestichprobe anhand der Daily-Daten bestimmen
-#   4. Reaktivitätsitems richtungsbereinigen
-#   5. Reaktivitäts- und Ease-of-Use-Index bilden
-#   6. Hierarchisches Omega, Omega total und Cronbachs Alpha berechnen
-#   7. Präregistrierte Prüfung eines möglichen Einzelausschlusses durchführen
-#   8. Items und Indizes deskriptiv auswerten
-#   9. Freitextantworten exportieren
-#  10. Tabellen und Abbildungen speichern
-#
-# Richtung der Skalen:
-#   Reactivity:
-#     Höhere Werte = stärkere durch die Studie verursachte Reaktivität
-#
-#     Deshalb werden folgende Items invertiert:
-#       Item 2: Inhalte sind gleich geblieben
-#       Item 3: Nutzung ist gleich geblieben
-#       Item 5: Uploads entsprechen der normalen Nutzung
-#
-#   Ease of Use:
-#     Höhere Werte = höhere wahrgenommene Benutzerfreundlichkeit
-#
-# Input:
-#   Eine RDS-Datei in 01_Data, deren Dateiname "outro", "abschluss"
-#   oder "closing" enthält.
-#
-# Optionaler Input:
-#   03_Output/daily_participant_level.rds
-#
-# Output:
+# Outputs:
 #   03_Output/Outro_Results.xlsx
+#     - Scales              publication-ready Skalenübersicht
+#     - Items               publication-ready Itemdeskriptiven
+#     - Method_Associations wenige theoriegeleitete explorative Zusammenhänge
+#     - Open_Text           Freitext für qualitative Sichtung
 #   03_Output/outro_prepared.rds
-#   03_Output/outro_reliability_objects.rds
-#
-# Figures:
 #   04_Figures/Outro_*.png
+#
+# Notes:
+#   - Höhere Reactivity-Werte = stärkere studienbedingte Reaktivität.
+#   - Items 2, 3 und 5 werden dafür invertiert.
+#   - Höhere Ease-of-Use-Werte = höhere wahrgenommene Benutzerfreundlichkeit.
+#   - Reliabilität wird mit Cronbachs Alpha und Omega total berichtet.
+#   - Ein möglicher präregistrierter Einzelausschluss orientiert sich an Omega
+#     total; Omega hierarchical wird für die Ein-Faktor-Lösung nicht verwendet.
 ################################################################################
 
-
-#===============================================================================
-# 01 Packages
-#===============================================================================
-
-if (!requireNamespace("pacman", quietly = TRUE)) {
-  install.packages("pacman")
-}
-
-pacman::p_load(
-  tidyverse,
-  psych,
-  janitor,
-  openxlsx,
-  fs,
-  scales
-)
+rm(list = ls())
 
 
 #===============================================================================
-# 02 Settings
+# 01 Settings and paths
 #===============================================================================
+# Nur wenige zentrale Schalter. Diagnostische Detailoutputs werden bewusst nicht
+# geschrieben; Probleme erscheinen als stop()/warning() oder im Konsolenreport.
 
 omega_cutoff <- 0.70
-
-# Entspricht der Präregistrierung:
-# Ein einzelnes Item darf ausgeschlossen werden, wenn hierdurch Omega
-# von unter .70 auf mindestens .70 steigt.
 apply_single_item_exclusion <- TRUE
+create_figures <- TRUE
 
-
-#===============================================================================
-# 03 Paths
-#===============================================================================
-
+helper_script <- file.path("02_Scripts", "00_Helpers.R")
 data_folder <- "01_Data"
 output_folder <- "03_Output"
 figure_folder <- "04_Figures"
-
-
-helper_script <- file.path(
-  "02_Scripts",
-  "00_Helpers.R"
-)
-
 
 daily_participant_file <- file.path(
   output_folder,
@@ -106,18 +60,40 @@ output_rds <- file.path(
   "outro_prepared.rds"
 )
 
-reliability_rds <- file.path(
-  output_folder,
-  "outro_reliability_objects.rds"
+
+#===============================================================================
+# 02 Packages and shared helpers
+#===============================================================================
+# Das gemeinsame Helper-Script liefert Cleaning, Reliabilität, Excel-Helfer und
+# insbesondere das gemeinsame Grafiktheme von Screening, Daily und Outro.
+
+if (!requireNamespace("pacman", quietly = TRUE)) {
+  install.packages("pacman")
+}
+
+pacman::p_load(
+  tidyverse,
+  psych,
+  janitor,
+  openxlsx,
+  fs
 )
+
+if (!file.exists(helper_script)) {
+  stop("Helper-Script nicht gefunden: ", helper_script)
+}
+
+source(helper_script)
 
 fs::dir_create(output_folder)
 fs::dir_create(figure_folder)
 
 
 #===============================================================================
-# 04 Identify Outro data file
+# 03 Locate and load Outro data
 #===============================================================================
+# Der Dateiname darf flexibel bleiben; bei mehreren Treffern wird nicht geraten,
+# sondern abgebrochen, damit nicht versehentlich die falsche Welle analysiert wird.
 
 outro_files <- fs::dir_ls(
   path = data_folder,
@@ -126,182 +102,18 @@ outro_files <- fs::dir_ls(
 )
 
 if (length(outro_files) == 0) {
-  
-  stop(
-    paste0(
-      "Im Ordner 01_Data wurde keine Outro-RDS-Datei gefunden.\n",
-      "Der Dateiname muss 'outro', 'abschluss' oder 'closing' enthalten."
-    )
-  )
+  stop("Keine Outro-/Abschluss-RDS-Datei in 01_Data gefunden.")
 }
 
 if (length(outro_files) > 1) {
-  
   stop(
-    paste0(
-      "Mehrere mögliche Outro-Dateien wurden gefunden:\n- ",
-      paste(
-        outro_files,
-        collapse = "\n- "
-      ),
-      "\nBitte Dateinamen eindeutiger gestalten."
-    )
+    "Mehrere mögliche Outro-Dateien gefunden:\n- ",
+    paste(outro_files, collapse = "\n- ")
   )
 }
 
 outro_file <- outro_files[[1]]
-
-#===============================================================================
-# 05 Helper Script
-#===============================================================================
-
-if (file.exists(helper_script)) {
-  source(helper_script)
-} else {
-  warning(
-    "Helper-Script nicht gefunden: ",
-    helper_script,
-    "!!"
-  )
-}
-
-#===============================================================================
-# 06 Visual design
-#===============================================================================
-
-project_colors <- c(
-  primary = "#315F6B",
-  secondary = "#7D9DA3",
-  accent = "#C49A5A",
-  dark = "#26383F",
-  medium = "#66777D",
-  light = "#E8EFF1",
-  grid = "#DCE4E6",
-  white = "#FFFFFF",
-  missing = "#B8C2C5"
-)
-
-scale_colors <- c(
-  Reactivity = project_colors["accent"],
-  `Ease of Use` = project_colors["primary"]
-)
-
-
-theme_project <- function(base_size = 12) {
-  
-  theme_minimal(
-    base_size = base_size
-  ) +
-    theme(
-      plot.background = element_rect(
-        fill = project_colors["white"],
-        color = NA
-      ),
-      
-      panel.background = element_rect(
-        fill = project_colors["white"],
-        color = NA
-      ),
-      
-      plot.title = element_text(
-        color = project_colors["dark"],
-        face = "bold",
-        size = rel(1.25),
-        margin = margin(
-          b = 5
-        )
-      ),
-      
-      plot.subtitle = element_text(
-        color = project_colors["medium"],
-        size = rel(0.95),
-        margin = margin(
-          b = 12
-        )
-      ),
-      
-      plot.caption = element_text(
-        color = project_colors["medium"],
-        size = rel(0.8),
-        hjust = 0,
-        margin = margin(
-          t = 10
-        )
-      ),
-      
-      axis.title = element_text(
-        color = project_colors["dark"],
-        face = "bold"
-      ),
-      
-      axis.text = element_text(
-        color = project_colors["dark"]
-      ),
-      
-      axis.ticks = element_blank(),
-      
-      panel.grid.major.x = element_line(
-        color = project_colors["grid"],
-        linewidth = 0.4
-      ),
-      
-      panel.grid.major.y = element_blank(),
-      
-      panel.grid.minor = element_blank(),
-      
-      legend.position = "bottom",
-      
-      legend.title = element_blank(),
-      
-      plot.margin = margin(
-        15,
-        20,
-        15,
-        15
-      )
-    )
-}
-
-
-theme_set(
-  theme_project()
-)
-
-
-save_project_plot <- function(
-    plot,
-    filename,
-    width = 8,
-    height = 5
-) {
-  
-  ggsave(
-    filename = file.path(
-      figure_folder,
-      filename
-    ),
-    plot = plot,
-    width = width,
-    height = height,
-    dpi = 300,
-    bg = project_colors["white"]
-  )
-}
-
-
-#===============================================================================
-# 07 Load Outro data
-#===============================================================================
-
-outro_raw <- readRDS(
-  outro_file
-) %>%
-  janitor::clean_names()
-
-
-#===============================================================================
-# 08 Identify participant variable
-#===============================================================================
+outro_raw <- readRDS(outro_file) %>% janitor::clean_names()
 
 participant_variable <- first_existing(
   outro_raw,
@@ -314,206 +126,95 @@ participant_variable <- first_existing(
   description = "Participant Code"
 )
 
+reactivity_raw_items <- paste0("outro_reactivity_", 1:5)
+ease_items <- paste0("outro_ease_", 1:8)
+closed_items <- c(reactivity_raw_items, ease_items)
 
-#===============================================================================
-# 09 Required variables
-#===============================================================================
+required_variables <- c(participant_variable, closed_items)
+missing_required <- setdiff(required_variables, names(outro_raw))
 
-reactivity_raw_items <- paste0(
-  "outro_reactivity_",
-  1:5
-)
-
-ease_items <- paste0(
-  "outro_ease_",
-  1:8
-)
-
-required_variables <- c(
-  participant_variable,
-  reactivity_raw_items,
-  ease_items,
-  "outro_problems_free",
-  "outro_suggestions_free"
-)
-
-missing_variables <- setdiff(
-  required_variables,
-  names(outro_raw)
-)
-
-if (length(missing_variables) > 0) {
-  
+if (length(missing_required) > 0) {
   stop(
-    paste0(
-      "Folgende benötigte Outro-Variablen fehlen:\n- ",
-      paste(
-        missing_variables,
-        collapse = "\n- "
-      )
-    )
+    "Benötigte Outro-Variablen fehlen:\n- ",
+    paste(missing_required, collapse = "\n- ")
   )
+}
+
+# Freitext ist methodisch nützlich, aber kein Grund, die quantitative Analyse zu
+# stoppen. Falls die Variablen fehlen, werden leere Spalten ergänzt.
+if (!"outro_problems_free" %in% names(outro_raw)) {
+  outro_raw$outro_problems_free <- NA_character_
+}
+if (!"outro_suggestions_free" %in% names(outro_raw)) {
+  outro_raw$outro_suggestions_free <- NA_character_
 }
 
 
 #===============================================================================
-# 10 Prepare participant code and handle duplicate Outro rows
+# 04 Clean participants and item values
 #===============================================================================
-
-outro_raw <- outro_raw %>%
-  mutate(
-    participant = clean_text(
-      .data[[participant_variable]]
-    )
-  )
-
-
-duplicate_participants <- outro_raw %>%
-  count(
-    participant,
-    name = "Number_of_Rows"
-  ) %>%
-  filter(
-    !is.na(participant),
-    Number_of_Rows > 1
-  )
-
-
-if (nrow(duplicate_participants) > 0) {
-  
-  if ("committed" %in% names(outro_raw)) {
-    
-    warning(
-      nrow(duplicate_participants),
-      " Participant Codes kommen mehrfach vor. ",
-      "Je Person wird die zuletzt abgeschlossene Outro-Befragung verwendet."
-    )
-    
-    outro_raw <- outro_raw %>%
-      arrange(
-        participant,
-        desc(committed)
-      ) %>%
-      distinct(
-        participant,
-        .keep_all = TRUE
-      )
-    
-  } else {
-    
-    stop(
-      paste0(
-        "Doppelte Participant Codes wurden gefunden, aber es existiert ",
-        "keine Variable 'committed', anhand derer die neueste Befragung ",
-        "bestimmt werden könnte."
-      )
-    )
-  }
-}
-
-
-#===============================================================================
-# 11 Prepare item values
-#===============================================================================
+# Doppelte Abschlüsse werden nur dann eindeutig aufgelöst, wenn ein committed-
+# Zeitpunkt vorliegt. Skalenwerte außerhalb 1–5 gelten als Datenfehler.
 
 outro <- outro_raw %>%
   mutate(
-    across(
-      all_of(
-        c(
-          reactivity_raw_items,
-          ease_items
-        )
-      ),
-      clean_numeric
-    ),
-    
-    problems_free = clean_text(
-      outro_problems_free
-    ),
-    
-    suggestions_free = clean_text(
-      outro_suggestions_free
-    )
-  )
+    participant = clean_text(.data[[participant_variable]]),
+    across(all_of(closed_items), ~ na_if(clean_numeric(.x), -1)),
+    problems_free = clean_text(outro_problems_free),
+    suggestions_free = clean_text(outro_suggestions_free)
+  ) %>%
+  filter(!is.na(participant))
 
+duplicate_participants <- outro %>%
+  count(participant, name = "N_Rows") %>%
+  filter(N_Rows > 1)
 
-#===============================================================================
-# 12 Check expected response ranges
-#===============================================================================
-
-range_check <- purrr::map_dfr(
-  c(
-    reactivity_raw_items,
-    ease_items
-  ),
-  function(item) {
-    
-    values <- outro[[item]]
-    
-    tibble(
-      Item = item,
-      
-      Observed_Minimum = if (
-        all(is.na(values))
-      ) {
-        NA_real_
-      } else {
-        min(
-          values,
-          na.rm = TRUE
-        )
-      },
-      
-      Observed_Maximum = if (
-        all(is.na(values))
-      ) {
-        NA_real_
-      } else {
-        max(
-          values,
-          na.rm = TRUE
-        )
-      },
-      
-      N_Outside_1_to_5 = sum(
-        values < 1 |
-          values > 5,
-        na.rm = TRUE
-      )
+if (nrow(duplicate_participants) > 0) {
+  if (!"committed" %in% names(outro)) {
+    stop(
+      "Doppelte Participant Codes im Outro, aber keine Variable `committed` ",
+      "zur eindeutigen Auswahl des letzten Abschlusses."
     )
   }
-)
-
-if (any(range_check$N_Outside_1_to_5 > 0)) {
   
   warning(
-    "Mindestens ein Outro-Item enthält Werte außerhalb des Bereichs 1 bis 5."
+    nrow(duplicate_participants),
+    " doppelte Participant Codes: letzter committed-Abschluss wird verwendet."
+  )
+  
+  outro <- outro %>%
+    arrange(participant, desc(committed)) %>%
+    distinct(participant, .keep_all = TRUE)
+}
+
+range_issues <- purrr::map_dfr(
+  closed_items,
+  ~ outro %>%
+    filter(!is.na(.data[[.x]]), .data[[.x]] < 1 | .data[[.x]] > 5) %>%
+    transmute(participant, Item = .x, Value = .data[[.x]])
+)
+
+if (nrow(range_issues) > 0) {
+  stop(
+    "Outro enthält ", nrow(range_issues),
+    " Werte außerhalb der vorgesehenen Skala 1–5."
   )
 }
 
 
 #===============================================================================
-# 13 Reverse-code Reactivity items
+# 05 Construct directionally aligned items
 #===============================================================================
-
-# Die Originalitems bleiben unverändert erhalten.
-#
-# Nach der Invertierung bedeuten höhere Werte für alle Items:
-# stärkere Reaktivität durch die Studienteilnahme.
+# Die Reaktivitätsitems werden so ausgerichtet, dass ein hoher Wert immer mehr
+# studienbedingte Veränderung bedeutet. Die Originalitems bleiben erhalten.
 
 outro <- outro %>%
   mutate(
-    outro_reactivity_2_reversed =
-      6 - outro_reactivity_2,
-    
-    outro_reactivity_3_reversed =
-      6 - outro_reactivity_3,
-    
-    outro_reactivity_5_reversed =
-      6 - outro_reactivity_5
+    outro_reactivity_2_reversed = 6 - outro_reactivity_2,
+    outro_reactivity_3_reversed = 6 - outro_reactivity_3,
+    outro_reactivity_5_reversed = 6 - outro_reactivity_5,
+    outro_complete = if_all(all_of(closed_items), ~ !is.na(.x))
   )
-
 
 reactivity_items <- c(
   "outro_reactivity_1",
@@ -523,576 +224,388 @@ reactivity_items <- c(
   "outro_reactivity_5_reversed"
 )
 
-
-#===============================================================================
-# 14 Item labels
-#===============================================================================
-
 reactivity_labels <- c(
   outro_reactivity_1 =
     "Gezielt nach hochladbaren Beiträgen gesucht",
-  
   outro_reactivity_2_reversed =
-    "Wahrgenommene Veränderung der angezeigten Inhalte",
-  
+    "Angezeigte Inhalte wirkten weniger wie zuvor",
   outro_reactivity_3_reversed =
-    "Veränderung der eigenen Social-Media-Nutzung",
-  
+    "Eigene Social-Media-Nutzung wich stärker vom Üblichen ab",
   outro_reactivity_4 =
     "Mehr öffentlich relevante Inhalte angezeigt",
-  
   outro_reactivity_5_reversed =
-    "Uploads bilden normale Nutzung weniger gut ab"
+    "Uploads bildeten die normale Nutzung weniger gut ab"
 )
-
 
 ease_labels <- c(
-  outro_ease_1 =
-    "App ist benutzerfreundlich",
-  
-  outro_ease_2 =
-    "Teilnahme erfordert wenige Schritte",
-  
-  outro_ease_3 =
-    "Nutzung der App ist mühelos",
-  
-  outro_ease_4 =
-    "Fehler lassen sich schnell beheben",
-  
-  outro_ease_5 =
-    "App kann zuverlässig genutzt werden",
-  
-  outro_ease_6 =
-    "Download und Installation waren einfach",
-  
-  outro_ease_7 =
-    "Eingabe des Login-Codes war einfach",
-  
-  outro_ease_8 =
-    "Orientierung in der App war einfach"
+  outro_ease_1 = "App ist benutzerfreundlich",
+  outro_ease_2 = "Teilnahme erfordert wenige Schritte",
+  outro_ease_3 = "Nutzung der App ist mühelos",
+  outro_ease_4 = "Fehler lassen sich schnell beheben",
+  outro_ease_5 = "App kann zuverlässig genutzt werden",
+  outro_ease_6 = "Download und Installation waren einfach",
+  outro_ease_7 = "Eingabe des Login-Codes war einfach",
+  outro_ease_8 = "Orientierung in der App war einfach"
 )
 
 
 #===============================================================================
-# 15 Determine completed Outro questionnaires
+# 06 Restrict to the Diary analysis sample
 #===============================================================================
-
-all_closed_items <- c(
-  reactivity_raw_items,
-  ease_items
-)
-
-outro <- outro %>%
-  mutate(
-    N_Closed_Items_Answered = rowSums(
-      !is.na(
-        across(
-          all_of(all_closed_items)
-        )
-      )
-    ),
-    
-    Outro_Complete =
-      N_Closed_Items_Answered ==
-      length(all_closed_items)
-  )
-
-
-#===============================================================================
-# 16 Restrict sample using Daily completion criterion
-#===============================================================================
+# Das kompakte Daily-Script speichert im Participant-RDS bereits nur Personen,
+# die das Diary-Inklusionskriterium erfüllen. Deshalb reicht hier ein ID-Match;
+# ein zusätzlicher Abschlussindikator ist nicht mehr nötig.
 
 daily_filter_applied <- FALSE
+daily_participant <- NULL
 
 if (file.exists(daily_participant_file)) {
-  
-  daily_participant <- readRDS(
-    daily_participant_file
-  ) %>%
+  daily_participant <- readRDS(daily_participant_file) %>%
     janitor::clean_names()
   
   daily_participant_variable <- first_existing(
     daily_participant,
-    c(
-      "participant",
-      "personal_participant_code",
-      "personalparticipantcode"
-    ),
-    description = "Participant Code in den Daily-Daten"
+    c("participant", "personal_participant_code", "personalparticipantcode"),
+    description = "Participant Code in Daily participant data"
   )
   
-  daily_completion_variable <- first_existing(
-    daily_participant,
-    c(
-      "at_least_seven_screenshots",
-      "at_least_7_screenshots"
-    ),
-    description = "Daily-Abschlussindikator"
-  )
-  
-  eligible_daily_codes <- daily_participant %>%
+  daily_participant <- daily_participant %>%
     mutate(
-      participant = clean_text(
-        .data[[daily_participant_variable]]
-      ),
-      
-      eligible_daily = clean_binary(
-        .data[[daily_completion_variable]]
-      )
+      participant = clean_text(.data[[daily_participant_variable]])
     ) %>%
-    filter(
-      eligible_daily %in% TRUE
-    ) %>%
-    pull(
-      participant
-    ) %>%
-    unique()
+    filter(!is.na(participant)) %>%
+    distinct(participant, .keep_all = TRUE)
   
-  outro <- outro %>%
-    mutate(
-      Daily_Criterion_Met =
-        participant %in%
-        eligible_daily_codes
-    )
-  
+  eligible_daily_ids <- daily_participant$participant
   daily_filter_applied <- TRUE
   
-} else {
+  outro_analysis <- outro %>%
+    filter(outro_complete, participant %in% eligible_daily_ids)
   
+} else {
   warning(
-    paste0(
-      "Die Datei '",
-      daily_participant_file,
-      "' wurde nicht gefunden. ",
-      "Das Kriterium von mindestens sieben Screenshots wird daher ",
-      "noch nicht angewendet."
-    )
+    "daily_participant_level.rds nicht gefunden; Outro wird nur nach ",
+    "vollständigem Abschluss gefiltert."
   )
   
-  outro <- outro %>%
-    mutate(
-      Daily_Criterion_Met = NA
-    )
-}
-
-
-#===============================================================================
-# 17 Final analysis sample
-#===============================================================================
-
-if (daily_filter_applied) {
-  
   outro_analysis <- outro %>%
-    filter(
-      Outro_Complete,
-      Daily_Criterion_Met
-    )
-  
-} else {
-  
-  outro_analysis <- outro %>%
-    filter(
-      Outro_Complete
-    )
+    filter(outro_complete)
 }
-
 
 if (nrow(outro_analysis) == 0) {
-  
-  stop(
-    paste0(
-      "Nach Anwendung der Abschlusskriterien verbleiben keine Fälle. ",
-      "Bitte Outro- und Daily-Daten prüfen."
-    )
-  )
+  stop("Nach Anwendung der Outro-/Daily-Kriterien verbleiben keine Fälle.")
 }
 
 
 #===============================================================================
-# 18 Reliability analyses: full scales
+# 07 Reliability and preregistered item-deletion check
 #===============================================================================
+# Reliabilität ist hier ein Skalencheck, nicht das Hauptergebnis. Berichtet werden
+# Alpha und Omega total. Ein einzelnes Item wird nur ausgeschlossen, wenn Omega
+# total zunächst < .70 liegt und nach genau einem Ausschluss mindestens .70 ist.
 
 reactivity_reliability <- calculate_scale_reliability(
-  data = outro_analysis,
-  items = reactivity_items,
-  scale_name = "Reactivity"
+  outro_analysis,
+  reactivity_items,
+  "Reactivity"
 )
 
 ease_reliability <- calculate_scale_reliability(
-  data = outro_analysis,
-  items = ease_items,
-  scale_name = "Ease of Use"
+  outro_analysis,
+  ease_items,
+  "Ease of Use"
 )
 
-
-reliability_summary_full <- bind_rows(
-  reactivity_reliability$summary,
-  ease_reliability$summary
-)
-
-reliability_leave_one_out <- bind_rows(
-  reactivity_reliability$leave_one_out,
-  ease_reliability$leave_one_out
-)
-
-
-#===============================================================================
-# 19 Apply preregistered item-selection rule
-#===============================================================================
-
-reactivity_selection <- select_scale_items(
-  reliability_result = reactivity_reliability,
-  original_items = reactivity_items,
-  cutoff = omega_cutoff,
-  allow_exclusion = apply_single_item_exclusion
-)
-
-ease_selection <- select_scale_items(
-  reliability_result = ease_reliability,
-  original_items = ease_items,
-  cutoff = omega_cutoff,
-  allow_exclusion = apply_single_item_exclusion
-)
-
-
-reactivity_final_items <-
-  reactivity_selection$selected_items
-
-ease_final_items <-
-  ease_selection$selected_items
-
-
-scale_decisions <- bind_rows(
-  reactivity_selection$decision %>%
-    mutate(
-      Scale = "Reactivity",
-      .before = 1
-    ),
+select_by_omega_total <- function(reliability_result, items, cutoff, allow_exclusion) {
+  full_omega <- reliability_result$summary$Omega_Total[[1]]
+  selected_items <- items
+  excluded_item <- NA_character_
   
-  ease_selection$decision %>%
-    mutate(
-      Scale = "Ease of Use",
-      .before = 1
-    )
+  candidates <- reliability_result$leave_one_out %>%
+    filter(!is.na(Omega_Total)) %>%
+    arrange(desc(Omega_Total))
+  
+  if (
+    allow_exclusion &&
+    !is.na(full_omega) &&
+    full_omega < cutoff &&
+    nrow(candidates) > 0 &&
+    candidates$Omega_Total[[1]] >= cutoff
+  ) {
+    excluded_item <- candidates$Item_Removed[[1]]
+    selected_items <- setdiff(items, excluded_item)
+  }
+  
+  list(
+    selected_items = selected_items,
+    excluded_item = excluded_item,
+    full_omega = full_omega,
+    best_omega_deleted = if (nrow(candidates) == 0) NA_real_ else candidates$Omega_Total[[1]]
+  )
+}
+
+reactivity_selection <- select_by_omega_total(
+  reactivity_reliability,
+  reactivity_items,
+  omega_cutoff,
+  apply_single_item_exclusion
 )
 
+ease_selection <- select_by_omega_total(
+  ease_reliability,
+  ease_items,
+  omega_cutoff,
+  apply_single_item_exclusion
+)
 
-#===============================================================================
-# 20 Construct final scale indices
-#===============================================================================
+reactivity_final_items <- reactivity_selection$selected_items
+ease_final_items <- ease_selection$selected_items
 
-outro_analysis <- outro_analysis %>%
-  mutate(
-    reactivity_index = complete_mean(
-      data = outro_analysis,
-      items = reactivity_final_items
-    ),
-    
-    ease_index = complete_mean(
-      data = outro_analysis,
-      items = ease_final_items
-    )
-  )
+outro_analysis$reactivity_index <- complete_mean(
+  outro_analysis,
+  reactivity_final_items
+)
 
-
-#===============================================================================
-# 21 Recalculate reliability for final scales
-#===============================================================================
+outro_analysis$ease_index <- complete_mean(
+  outro_analysis,
+  ease_final_items
+)
 
 reactivity_reliability_final <- calculate_scale_reliability(
-  data = outro_analysis,
-  items = reactivity_final_items,
-  scale_name = "Reactivity – final"
+  outro_analysis,
+  reactivity_final_items,
+  "Reactivity"
 )
 
 ease_reliability_final <- calculate_scale_reliability(
-  data = outro_analysis,
-  items = ease_final_items,
-  scale_name = "Ease of Use – final"
-)
-
-
-reliability_summary_final <- bind_rows(
-  reactivity_reliability_final$summary,
-  ease_reliability_final$summary
+  outro_analysis,
+  ease_final_items,
+  "Ease of Use"
 )
 
 
 #===============================================================================
-# 22 Sample overview
+# 08 Publication table: scales
 #===============================================================================
+# Eine kompakte Tabelle enthält alles, was für Methoden-/Ergebnistext typischerweise
+# gebraucht wird: N, Itemzahl, Lage/Streuung, CI und Reliabilität.
 
-sample_overview <- tibble(
-  Indicator = c(
-    "Zeilen in ursprünglicher Outro-Datei",
-    "Eindeutige Personen in ursprünglicher Outro-Datei",
-    "Vollständig beantwortete Outro-Fragebögen",
-    "Daily-Kriterium angewendet",
-    "Personen in finaler Outro-Analysestichprobe",
-    "Problembeschreibungen vorhanden",
-    "Verbesserungsvorschläge vorhanden"
-  ),
-  
-  Value = c(
-    nrow(outro_raw),
-    
-    n_distinct(
-      outro_raw$participant
-    ),
-    
-    sum(
-      outro$Outro_Complete,
-      na.rm = TRUE
-    ),
-    
-    as.character(
-      daily_filter_applied
-    ),
-    
-    n_distinct(
-      outro_analysis$participant
-    ),
-    
-    sum(
-      !is.na(outro_analysis$problems_free)
-    ),
-    
-    sum(
-      !is.na(outro_analysis$suggestions_free)
-    )
-  )
-)
-
-
-#===============================================================================
-# 23 Missing-data summary
-#===============================================================================
-
-missing_data_summary <- purrr::map_dfr(
-  c(
-    all_closed_items,
-    "problems_free",
-    "suggestions_free"
-  ),
-  function(variable) {
-    
-    tibble(
-      Variable = variable,
-      N_Total = nrow(outro),
-      N_Valid = sum(
-        !is.na(outro[[variable]])
-      ),
-      N_Missing = sum(
-        is.na(outro[[variable]])
-      ),
-      Percent_Missing =
-        100 * N_Missing / N_Total
-    )
-  }
-)
-
-
-#===============================================================================
-# 24 Item descriptives
-#===============================================================================
-
-reactivity_item_descriptives <- item_descriptives(
-  data = outro_analysis,
-  items = reactivity_items,
-  labels = reactivity_labels
-)
-
-ease_item_descriptives <- item_descriptives(
-  data = outro_analysis,
-  items = ease_items,
-  labels = ease_labels
-)
-
-
-reactivity_item_distributions <- item_distributions(
-  data = outro_analysis,
-  items = reactivity_items,
-  labels = reactivity_labels
-)
-
-ease_item_distributions <- item_distributions(
-  data = outro_analysis,
-  items = ease_items,
-  labels = ease_labels
-)
-
-
-#===============================================================================
-# 25 Scale descriptives
-#===============================================================================
-
-reactivity_index_summary <- descriptive_summary(
+reactivity_desc <- descriptive_summary(
   outro_analysis$reactivity_index,
-  "Reactivity-Index"
+  "Reaktivität"
 )
 
-ease_index_summary <- descriptive_summary(
+ease_desc <- descriptive_summary(
   outro_analysis$ease_index,
-  "Ease-of-Use-Index"
+  "Ease of Use"
 )
 
-scale_descriptives <- bind_rows(
-  reactivity_index_summary,
-  ease_index_summary
-)
-
-
-#===============================================================================
-# 26 Open-text responses
-#===============================================================================
-
-problems_free <- outro_analysis %>%
-  filter(
-    !is.na(problems_free)
-  ) %>%
-  select(
-    participant,
-    problems_free
-  ) %>%
-  arrange(
-    participant
-  )
-
-
-suggestions_free <- outro_analysis %>%
-  filter(
-    !is.na(suggestions_free)
-  ) %>%
-  select(
-    participant,
-    suggestions_free
-  ) %>%
-  arrange(
-    participant
-  )
-
-
-open_text_summary <- tibble(
-  Question = c(
-    "Probleme oder Unsicherheiten bei der App-Nutzung",
-    "Vorschläge zur Gestaltung der App"
-  ),
-  
-  N_Responses = c(
-    nrow(problems_free),
-    nrow(suggestions_free)
-  ),
-  
-  Percent_of_Analysis_Sample = c(
-    100 * nrow(problems_free) /
-      nrow(outro_analysis),
-    
-    100 * nrow(suggestions_free) /
-      nrow(outro_analysis)
-  )
-)
-
-
-#===============================================================================
-# 27 Optional descriptive association between the indices
-#===============================================================================
-
-index_correlation <- if (
-  sum(
-    complete.cases(
-      outro_analysis[
-        ,
-        c(
-          "reactivity_index",
-          "ease_index"
-        )
-      ]
+scale_table <- bind_rows(
+  reactivity_desc %>%
+    transmute(
+      Scale = "Reaktivität",
+      N = N_Valid,
+      Items = length(reactivity_final_items),
+      M = Mean,
+      SD,
+      CI95_Lower,
+      CI95_Upper,
+      Alpha = reactivity_reliability_final$summary$Cronbach_Alpha[[1]],
+      Omega_Total = reactivity_reliability_final$summary$Omega_Total[[1]],
+      Excluded_Item = reactivity_selection$excluded_item,
+      Interpretation = "Höher = stärkere studienbedingte Reaktivität"
+    ),
+  ease_desc %>%
+    transmute(
+      Scale = "Ease of Use",
+      N = N_Valid,
+      Items = length(ease_final_items),
+      M = Mean,
+      SD,
+      CI95_Lower,
+      CI95_Upper,
+      Alpha = ease_reliability_final$summary$Cronbach_Alpha[[1]],
+      Omega_Total = ease_reliability_final$summary$Omega_Total[[1]],
+      Excluded_Item = ease_selection$excluded_item,
+      Interpretation = "Höher = bessere wahrgenommene Benutzerfreundlichkeit"
     )
-  ) >= 3
-) {
-  
-  correlation_test <- cor.test(
-    outro_analysis$reactivity_index,
-    outro_analysis$ease_index,
-    method = "spearman",
-    exact = FALSE
+) %>%
+  mutate(
+    across(c(M, SD, CI95_Lower, CI95_Upper), ~ round(.x, 2)),
+    across(c(Alpha, Omega_Total), ~ round(.x, 3))
+  )
+
+
+#===============================================================================
+# 09 Publication table: items
+#===============================================================================
+# Itemwerte sind bei Reaktivität besonders wichtig, weil die fünf Fragen mehrere
+# Formen möglicher Reaktivität abbilden. Deshalb bleiben sie neben dem Index sichtbar.
+
+reactivity_item_table <- item_descriptives(
+  outro_analysis,
+  reactivity_items,
+  reactivity_labels
+) %>%
+  mutate(
+    Scale = "Reaktivität",
+    Item_Number = match(Item, reactivity_items),
+    Coding = "Richtungsgereinigt: höher = mehr Reaktivität"
+  )
+
+ease_item_table <- item_descriptives(
+  outro_analysis,
+  ease_items,
+  ease_labels
+) %>%
+  mutate(
+    Scale = "Ease of Use",
+    Item_Number = match(Item, ease_items),
+    Coding = if_else(
+      Item_Number <= 5,
+      "Core usability",
+      "App-spezifisch"
+    )
+  )
+
+item_table <- bind_rows(
+  reactivity_item_table,
+  ease_item_table
+) %>%
+  arrange(factor(Scale, levels = c("Reaktivität", "Ease of Use")), Item_Number) %>%
+  transmute(
+    Scale,
+    Item = Item_Number,
+    Statement = Variable,
+    Coding,
+    N = N_Valid,
+    M = round(Mean, 2),
+    SD = round(SD, 2),
+    CI95_Lower = round(CI95_Lower, 2),
+    CI95_Upper = round(CI95_Upper, 2)
+  )
+
+
+#===============================================================================
+# 10 Join selected Diary indicators
+#===============================================================================
+# Für die methodische Validierung reichen wenige Diary-Marker. Die im Daily-Script
+# vorberechneten Tagesslopes sind besonders relevant: Sie prüfen, ob subjektiv
+# berichtete Reaktivität mit Veränderungen über die sieben Tage zusammenhängt.
+
+if (!is.null(daily_participant)) {
+  daily_keep <- c(
+    "participant",
+    "n_screenshots",
+    "n_active_days",
+    "share_publicly_relevant",
+    "share_incidental_broad",
+    "absolute_incidentality_gap_broad",
+    "upload_count_day_slope",
+    "targeted_post_day_slope",
+    "thorough_reading_day_slope"
   )
   
-  tibble(
-    Variables =
-      "Reactivity-Index × Ease-of-Use-Index",
-    
-    Method = "Spearman",
-    
-    N = sum(
-      complete.cases(
-        outro_analysis[
-          ,
-          c(
-            "reactivity_index",
-            "ease_index"
-          )
-        ]
-      )
-    ),
-    
-    Correlation = unname(
-      correlation_test$estimate
-    ),
-    
-    P_Value = correlation_test$p.value,
-    
-    CI95_Lower = if (
-      is.null(correlation_test$conf.int)
-    ) {
-      NA_real_
-    } else {
-      correlation_test$conf.int[[1]]
-    },
-    
-    CI95_Upper = if (
-      is.null(correlation_test$conf.int)
-    ) {
-      NA_real_
-    } else {
-      correlation_test$conf.int[[2]]
-    },
-    
-    Analysis_Type = "Explorativ"
-  )
-  
+  outro_analysis <- outro_analysis %>%
+    left_join(
+      daily_participant %>% select(any_of(daily_keep)),
+      by = "participant"
+    )
+}
+
+
+#===============================================================================
+# 11 Exploratory method associations
+#===============================================================================
+# Nur theoriegeleitete Zusammenhänge werden geprüft. Sie dienen als methodischer
+# Plausibilitätscheck und werden nicht als kausale Effekte der Studie interpretiert.
+
+association_specs <- tribble(
+  ~Family, ~X, ~Y, ~X_Label, ~Y_Label,
+  "Skalenbezug", "reactivity_index", "ease_index",
+  "Reaktivität", "Ease of Use",
+  "Reaktivität × Diary", "reactivity_index", "upload_count_day_slope",
+  "Reaktivität", "Trend der Uploadzahl über die Tage",
+  "Reaktivität × Diary", "reactivity_index", "targeted_post_day_slope",
+  "Reaktivität", "Trend gezielter Exposition über die Tage",
+  "Reaktivität × Diary", "reactivity_index", "thorough_reading_day_slope",
+  "Reaktivität", "Trend gründlicher Rezeption über die Tage",
+  "Reaktivität × Diary", "reactivity_index", "absolute_incidentality_gap_broad",
+  "Reaktivität", "Absoluter Screening–Diary-Incidentality-Gap",
+  "Ease × Teilnahme", "ease_index", "n_screenshots",
+  "Ease of Use", "Anzahl hochgeladener Screenshots",
+  "Ease × Teilnahme", "ease_index", "n_active_days",
+  "Ease of Use", "Anzahl aktiver Diary-Tage"
+)
+
+available_associations <- association_specs %>%
+  filter(X %in% names(outro_analysis), Y %in% names(outro_analysis))
+
+method_associations <- if (nrow(available_associations) > 0) {
+  pmap_dfr(
+    available_associations,
+    function(Family, X, Y, X_Label, Y_Label) {
+      spearman_test(
+        outro_analysis,
+        X,
+        Y,
+        X_Label,
+        Y_Label
+      ) %>%
+        mutate(Family = Family, .before = 1)
+    }
+  ) %>%
+    group_by(Family) %>%
+    mutate(P_Adjusted_BH = p.adjust(P_Value, method = "BH")) %>%
+    ungroup() %>%
+    transmute(
+      Family,
+      Predictor = Variable_1,
+      Outcome = Variable_2,
+      N,
+      Spearman_Rho = round(Spearman_Rho, 3),
+      P_Value = round(P_Value, 4),
+      P_Adjusted_BH = round(P_Adjusted_BH, 4),
+      Note = "Explorativ; Teilnehmer-Ebene"
+    )
 } else {
-  
   tibble(
-    Variables =
-      "Reactivity-Index × Ease-of-Use-Index",
-    
-    Method = "Spearman",
-    
-    N = sum(
-      complete.cases(
-        outro_analysis[
-          ,
-          c(
-            "reactivity_index",
-            "ease_index"
-          )
-        ]
-      )
-    ),
-    
-    Correlation = NA_real_,
-    P_Value = NA_real_,
-    CI95_Lower = NA_real_,
-    CI95_Upper = NA_real_,
-    Analysis_Type = "Explorativ"
+    Family = character(), Predictor = character(), Outcome = character(),
+    N = integer(), Spearman_Rho = double(), P_Value = double(),
+    P_Adjusted_BH = double(), Note = character()
   )
 }
 
 
 #===============================================================================
-# 28 Save prepared data and reliability objects
+# 12 Open text for qualitative inspection
 #===============================================================================
+# Freitexte werden nicht quantitativ überinterpretiert. Sie bleiben in einer
+# einzigen übersichtlichen Tabelle für die manuelle methodische Sichtung erhalten.
+
+open_text <- outro_analysis %>%
+  select(participant, problems_free, suggestions_free) %>%
+  pivot_longer(
+    cols = c(problems_free, suggestions_free),
+    names_to = "Question",
+    values_to = "Response"
+  ) %>%
+  filter(!is.na(Response)) %>%
+  mutate(
+    Question = recode(
+      Question,
+      problems_free = "Probleme / Unsicherheiten",
+      suggestions_free = "Verbesserungsvorschläge"
+    )
+  ) %>%
+  arrange(Question, participant)
+
+
+#===============================================================================
+# 13 Save prepared participant-level data
+#===============================================================================
+# Das RDS enthält die vollständige finale Outro-Stichprobe inklusive der wenigen
+# verbundenen Daily-Marker und ist der maschinenlesbare Input für weitere Analysen.
 
 saveRDS(
   outro_analysis,
@@ -1100,192 +613,53 @@ saveRDS(
 )
 
 
-saveRDS(
-  list(
-    reactivity_full =
-      reactivity_reliability,
-    
-    ease_full =
-      ease_reliability,
-    
-    reactivity_final =
-      reactivity_reliability_final,
-    
-    ease_final =
-      ease_reliability_final,
-    
-    scale_decisions =
-      scale_decisions
-  ),
-  reliability_rds
-)
-
-
 #===============================================================================
-# 29 Create Excel workbook
+# 14 Publication-oriented Excel workbook
 #===============================================================================
+# Excel enthält bewusst nur direkt interpretierbare Tabellen. QC, Missingness und
+# Item-Deletion-Details werden nicht in zahlreiche separate Arbeitsblätter zerlegt.
 
 workbook <- openxlsx::createWorkbook()
 
 header_style <- openxlsx::createStyle(
   textDecoration = "bold",
+  fontColour = "#FFFFFF",
+  fgFill = unname(project_colors["primary"]),
   halign = "center",
   valign = "center",
   border = "Bottom"
 )
 
+add_excel_sheet(workbook, "Scales", scale_table, header_style)
+add_excel_sheet(workbook, "Items", item_table, header_style)
+add_excel_sheet(workbook, "Method_Associations", method_associations, header_style)
+add_excel_sheet(workbook, "Open_Text", open_text, header_style)
 
-add_excel_sheet(
+# Lange Itemtexte und Freitexte bekommen feste Breiten und Zeilenumbruch.
+openxlsx::setColWidths(
   workbook,
-  "Sample_Overview",
-  sample_overview,
-  header_style
+  "Items",
+  cols = which(names(item_table) %in% c("Statement", "Coding")),
+  widths = c(48, 30)
 )
 
-add_excel_sheet(
+openxlsx::setColWidths(
   workbook,
-  "Duplicate_Codes",
-  duplicate_participants,
-  header_style
+  "Open_Text",
+  cols = which(names(open_text) == "Response"),
+  widths = 70
 )
 
-add_excel_sheet(
-  workbook,
-  "Range_Check",
-  range_check,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Missing_Data",
-  missing_data_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Scale_Decisions",
-  scale_decisions,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Reliability_Full",
-  reliability_summary_full,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Reliability_Final",
-  reliability_summary_final,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Leave_One_Out",
-  reliability_leave_one_out,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "React_Alpha_Items",
-  reactivity_reliability$
-    alpha_item_statistics,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "React_Alpha_Deleted",
-  reactivity_reliability$
-    alpha_if_deleted,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Ease_Alpha_Items",
-  ease_reliability$
-    alpha_item_statistics,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Ease_Alpha_Deleted",
-  ease_reliability$
-    alpha_if_deleted,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Scale_Descriptives",
-  scale_descriptives,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Reactivity_Items",
-  reactivity_item_descriptives,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Reactivity_Distribution",
-  reactivity_item_distributions,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Ease_Items",
-  ease_item_descriptives,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Ease_Distribution",
-  ease_item_distributions,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Open_Text_Summary",
-  open_text_summary,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Problems_Free",
-  problems_free,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Suggestions_Free",
-  suggestions_free,
-  header_style
-)
-
-add_excel_sheet(
-  workbook,
-  "Index_Correlation",
-  index_correlation,
-  header_style
-)
-
+if (nrow(open_text) > 0) {
+  openxlsx::addStyle(
+    workbook,
+    "Open_Text",
+    style = openxlsx::createStyle(wrapText = TRUE, valign = "top"),
+    rows = 2:(nrow(open_text) + 1),
+    cols = seq_len(ncol(open_text)),
+    gridExpand = TRUE
+  )
+}
 
 openxlsx::saveWorkbook(
   workbook,
@@ -1295,477 +669,228 @@ openxlsx::saveWorkbook(
 
 
 #===============================================================================
-# 30 Figure: Reactivity items
+# 15 Figure: Reactivity items
 #===============================================================================
+# Punkt + 95%-CI ist für Likert-Mittelwerte kompakter und lesbarer als Balken.
+# Die neutrale Skalenmitte erleichtert die inhaltliche Einordnung.
 
-reactivity_plot_data <- reactivity_item_descriptives %>%
-  mutate(
-    Variable = forcats::fct_reorder(
-      Variable,
-      Mean
+if (create_figures) {
+  reactivity_plot_data <- item_table %>%
+    filter(Scale == "Reaktivität") %>%
+    mutate(
+      Statement = forcats::fct_rev(factor(Statement, levels = unique(Statement)))
     )
-  )
-
-
-figure_reactivity_items <- ggplot(
-  reactivity_plot_data,
-  aes(
-    x = Mean,
-    y = Variable
-  )
-) +
-  geom_col(
-    width = 0.62,
-    fill = project_colors["accent"]
+  
+  p_reactivity <- ggplot(
+    reactivity_plot_data,
+    aes(x = M, y = Statement)
   ) +
-  geom_errorbar(
-    aes(
-      xmin = CI95_Lower,
-      xmax = CI95_Upper
-    ),
-    width = 0.18,
-    color = project_colors["dark"],
-    linewidth = 0.65
-  ) +
-  geom_point(
-    color = project_colors["dark"],
-    size = 2.3
-  ) +
-  scale_x_continuous(
-    limits = c(
-      1,
-      5
-    ),
-    breaks = 1:5
-  ) +
-  labs(
-    title = "Wahrgenommene Reaktivität",
-    subtitle = "Mittelwerte und 95%-Konfidenzintervalle",
-    x = "Zustimmung (1–5)",
-    y = NULL,
-    caption = paste0(
-      "Alle Items sind so ausgerichtet, dass höhere Werte ",
-      "stärkere Reaktivität anzeigen."
+    geom_vline(
+      xintercept = 3,
+      linetype = "22",
+      linewidth = 0.55,
+      color = unname(project_colors["grid"])
+    ) +
+    geom_errorbar(
+      aes(xmin = CI95_Lower, xmax = CI95_Upper),
+      width = 0.16,
+      linewidth = 0.7,
+      color = unname(project_colors["accent"])
+    ) +
+    geom_point(
+      size = 3,
+      color = unname(project_colors["dark"])
+    ) +
+    scale_x_continuous(limits = c(1, 5), breaks = 1:5) +
+    labs(
+      title = "Wahrgenommene Reaktivität",
+      subtitle = "Richtungsgereinigte Itemmittelwerte mit 95%-Konfidenzintervallen",
+      x = "Zustimmung / Reaktivität (1–5)",
+      y = NULL,
+      caption = "Höhere Werte bedeuten stärkere studienbedingte Reaktivität; gestrichelt = Skalenmitte."
+    ) +
+    theme_project(legend_position = "none") +
+    theme(
+      panel.grid.major.y = element_blank(),
+      axis.text.y = element_text(size = 10)
     )
+  
+  save_project_plot(
+    p_reactivity,
+    file.path(figure_folder, "Outro_Reactivity_Items.png"),
+    width = 9.5,
+    height = 5.4
   )
-
-
-save_project_plot(
-  figure_reactivity_items,
-  "Outro_Reactivity_Items.png",
-  width = 10,
-  height = 6
-)
-
-
-#===============================================================================
-# 31 Figure: Ease-of-use items
-#===============================================================================
-
-ease_plot_data <- ease_item_descriptives %>%
-  mutate(
-    Variable = forcats::fct_reorder(
-      Variable,
-      Mean
+  
+  
+  #===============================================================================
+  # 16 Figure: Ease-of-use items
+  #===============================================================================
+  # Die acht Usability-Items werden im selben Layout dargestellt, sodass Screening,
+  # Daily und Outro visuell aus einem Guss bleiben.
+  
+  ease_plot_data <- item_table %>%
+    filter(Scale == "Ease of Use") %>%
+    mutate(
+      Statement = forcats::fct_rev(factor(Statement, levels = unique(Statement)))
     )
+  
+  p_ease <- ggplot(
+    ease_plot_data,
+    aes(x = M, y = Statement)
+  ) +
+    geom_vline(
+      xintercept = 3,
+      linetype = "22",
+      linewidth = 0.55,
+      color = unname(project_colors["grid"])
+    ) +
+    geom_errorbar(
+      aes(xmin = CI95_Lower, xmax = CI95_Upper),
+      width = 0.16,
+      linewidth = 0.7,
+      color = unname(project_colors["primary"])
+    ) +
+    geom_point(
+      size = 3,
+      color = unname(project_colors["dark"])
+    ) +
+    scale_x_continuous(limits = c(1, 5), breaks = 1:5) +
+    labs(
+      title = "Wahrgenommene Benutzerfreundlichkeit",
+      subtitle = "Itemmittelwerte mit 95%-Konfidenzintervallen",
+      x = "Zustimmung / Ease of Use (1–5)",
+      y = NULL,
+      caption = "Höhere Werte bedeuten bessere wahrgenommene Benutzerfreundlichkeit; gestrichelt = Skalenmitte."
+    ) +
+    theme_project(legend_position = "none") +
+    theme(
+      panel.grid.major.y = element_blank(),
+      axis.text.y = element_text(size = 10)
+    )
+  
+  save_project_plot(
+    p_ease,
+    file.path(figure_folder, "Outro_Ease_Items.png"),
+    width = 9.5,
+    height = 6.5
   )
-
-
-figure_ease_items <- ggplot(
-  ease_plot_data,
-  aes(
-    x = Mean,
-    y = Variable
-  )
-) +
-  geom_col(
-    width = 0.62,
-    fill = project_colors["primary"]
-  ) +
-  geom_errorbar(
-    aes(
-      xmin = CI95_Lower,
-      xmax = CI95_Upper
-    ),
-    width = 0.18,
-    color = project_colors["dark"],
-    linewidth = 0.65
-  ) +
-  geom_point(
-    color = project_colors["white"],
-    size = 2.3
-  ) +
-  scale_x_continuous(
-    limits = c(
-      1,
-      5
-    ),
-    breaks = 1:5
-  ) +
-  labs(
-    title = "Wahrgenommene Einfachheit der App-Nutzung",
-    subtitle = "Mittelwerte und 95%-Konfidenzintervalle",
-    x = "Zustimmung (1–5)",
-    y = NULL,
-    caption = "Höhere Werte stehen für eine höhere wahrgenommene Benutzerfreundlichkeit."
-  )
-
-
-save_project_plot(
-  figure_ease_items,
-  "Outro_Ease_Items.png",
-  width = 10,
-  height = 7
-)
-
-
-#===============================================================================
-# 32 Figure: Reactivity index
-#===============================================================================
-
-figure_reactivity_index <- ggplot(
-  outro_analysis,
-  aes(
-    x = reactivity_index
-  )
-) +
-  geom_histogram(
-    binwidth = 0.25,
-    boundary = 1,
-    fill = project_colors["accent"],
-    color = project_colors["white"],
-    linewidth = 0.4
-  ) +
-  geom_vline(
-    xintercept =
-      reactivity_index_summary$Mean,
+  
+  
+  #===============================================================================
+  # 17 Figure: method associations
+  #===============================================================================
+  # Die explorativen Korrelationen werden nur visualisiert, wenn tatsächlich
+  # auswertbare Zusammenhänge vorliegen. Der Plot zeigt Effektgrößen, nicht Signifikanz.
+  
+  association_plot_data <- method_associations %>%
+    filter(
+      Family != "Skalenbezug",
+      !is.na(Spearman_Rho)
+    ) %>%
+    mutate(
+      Label = paste(Predictor, "↔", Outcome),
+      Label = forcats::fct_reorder(Label, Spearman_Rho)
+    )
+  
+  if (nrow(association_plot_data) > 0) {
+    p_associations <- ggplot(
+      association_plot_data,
+      aes(x = Spearman_Rho, y = Label, color = Family)
+    ) +
+      geom_vline(
+        xintercept = 0,
+        linewidth = 0.6,
+        color = unname(project_colors["medium"])
+      ) +
+      geom_segment(
+        aes(x = 0, xend = Spearman_Rho, yend = Label),
+        linewidth = 0.9,
+        alpha = 0.7
+      ) +
+      geom_point(size = 3.2) +
+      scale_x_continuous(
+        limits = c(-1, 1),
+        breaks = seq(-1, 1, 0.25)
+      ) +
+      scale_color_project() +
+      labs(
+        title = "Methodische Plausibilitätschecks",
+        subtitle = "Explorative Spearman-Korrelationen auf Teilnehmendenebene",
+        x = "Spearman ρ",
+        y = NULL,
+        caption = "Explorativ; Effektgrößen dienen der methodischen Einordnung und nicht dem Nachweis kausaler Reaktivität."
+      ) +
+      theme_project() +
+      theme(panel.grid.major.y = element_blank())
     
-    color = project_colors["dark"],
-    linewidth = 0.9,
-    linetype = "22"
-  ) +
-  scale_x_continuous(
-    limits = c(
-      1,
-      5
-    ),
-    breaks = 1:5
-  ) +
-  labs(
-    title = "Reaktivitätsindex",
-    subtitle = paste0(
-      "M = ",
-      format(
-        round(
-          reactivity_index_summary$Mean,
-          2
-        ),
-        decimal.mark = ","
-      ),
-      "; SD = ",
-      format(
-        round(
-          reactivity_index_summary$SD,
-          2
-        ),
-        decimal.mark = ","
-      )
-    ),
-    x = "Reaktivität (1–5)",
-    y = "Anzahl der Teilnehmenden",
-    caption = "Höhere Werte stehen für eine stärkere Reaktivität durch die Studienteilnahme."
-  )
-
-
-save_project_plot(
-  figure_reactivity_index,
-  "Outro_Reactivity_Index.png"
-)
-
-
-#===============================================================================
-# 33 Figure: Ease-of-use index
-#===============================================================================
-
-figure_ease_index <- ggplot(
-  outro_analysis,
-  aes(
-    x = ease_index
-  )
-) +
-  geom_histogram(
-    binwidth = 0.25,
-    boundary = 1,
-    fill = project_colors["primary"],
-    color = project_colors["white"],
-    linewidth = 0.4
-  ) +
-  geom_vline(
-    xintercept =
-      ease_index_summary$Mean,
-    
-    color = project_colors["accent"],
-    linewidth = 0.9,
-    linetype = "22"
-  ) +
-  scale_x_continuous(
-    limits = c(
-      1,
-      5
-    ),
-    breaks = 1:5
-  ) +
-  labs(
-    title = "Ease-of-Use-Index",
-    subtitle = paste0(
-      "M = ",
-      format(
-        round(
-          ease_index_summary$Mean,
-          2
-        ),
-        decimal.mark = ","
-      ),
-      "; SD = ",
-      format(
-        round(
-          ease_index_summary$SD,
-          2
-        ),
-        decimal.mark = ","
-      )
-    ),
-    x = "Wahrgenommene Einfachheit (1–5)",
-    y = "Anzahl der Teilnehmenden",
-    caption = "Höhere Werte stehen für eine höhere wahrgenommene Benutzerfreundlichkeit."
-  )
-
-
-save_project_plot(
-  figure_ease_index,
-  "Outro_Ease_Index.png"
-)
-
-
-#===============================================================================
-# 34 Figure: Comparison of scale means
-#===============================================================================
-
-scale_plot_data <- scale_descriptives %>%
-  mutate(
-    Scale = recode(
-      Variable,
-      `Reactivity-Index` = "Reactivity",
-      `Ease-of-Use-Index` = "Ease of Use"
+    save_project_plot(
+      p_associations,
+      file.path(figure_folder, "Outro_Method_Associations.png"),
+      width = 10,
+      height = 5.8
     )
-  )
-
-
-figure_scale_comparison <- ggplot(
-  scale_plot_data,
-  aes(
-    x = Scale,
-    y = Mean,
-    fill = Scale
-  )
-) +
-  geom_col(
-    width = 0.58
-  ) +
-  geom_errorbar(
-    aes(
-      ymin = CI95_Lower,
-      ymax = CI95_Upper
-    ),
-    width = 0.15,
-    color = project_colors["dark"],
-    linewidth = 0.7
-  ) +
-  geom_point(
-    color = project_colors["white"],
-    size = 2.4
-  ) +
-  scale_fill_manual(
-    values = scale_colors
-  ) +
-  scale_y_continuous(
-    limits = c(
-      1,
-      5
-    ),
-    breaks = 1:5
-  ) +
-  guides(
-    fill = "none"
-  ) +
-  labs(
-    title = "Bewertung der Studienteilnahme und App",
-    subtitle = "Mittelwerte und 95%-Konfidenzintervalle",
-    x = NULL,
-    y = "Indexwert (1–5)"
-  )
-
-
-save_project_plot(
-  figure_scale_comparison,
-  "Outro_Scale_Comparison.png",
-  width = 7,
-  height = 5
-)
+  }
+}
 
 
 #===============================================================================
-# 35 Console report
+# 18 Console report
 #===============================================================================
+# Alles, was primär QC oder Workflow-Dokumentation ist, landet in der Konsole
+# statt in zusätzlichen Excel-Blättern.
 
 cat(
-  "\n",
-  "============================================================\n",
+  "\n============================================================\n",
   "OUTRO ANALYSIS COMPLETED\n",
   "============================================================\n",
   sep = ""
 )
 
+cat("Outro file: ", outro_file, "\n", sep = "")
+cat("Raw participants: ", n_distinct(outro_raw[[participant_variable]], na.rm = TRUE), "\n", sep = "")
+cat("Duplicate participant codes: ", nrow(duplicate_participants), "\n", sep = "")
+cat("Complete Outro questionnaires: ", sum(outro$outro_complete, na.rm = TRUE), "\n", sep = "")
+cat("Daily sample filter applied: ", daily_filter_applied, "\n", sep = "")
+cat("Final analysis sample: ", nrow(outro_analysis), "\n\n", sep = "")
+
 cat(
-  "Outro file: ",
-  outro_file,
+  "Reactivity: M = ", round(reactivity_desc$Mean, 2),
+  ", SD = ", round(reactivity_desc$SD, 2),
+  ", alpha = ", round(reactivity_reliability_final$summary$Cronbach_Alpha[[1]], 3),
+  ", omega total = ", round(reactivity_reliability_final$summary$Omega_Total[[1]], 3),
   "\n",
   sep = ""
 )
 
 cat(
-  "Rows in raw Outro data: ",
-  nrow(outro_raw),
+  "  Item excluded: ",
+  ifelse(is.na(reactivity_selection$excluded_item), "none", reactivity_selection$excluded_item),
   "\n",
   sep = ""
 )
 
 cat(
-  "Complete Outro questionnaires: ",
-  sum(
-    outro$Outro_Complete,
-    na.rm = TRUE
-  ),
+  "Ease of Use: M = ", round(ease_desc$Mean, 2),
+  ", SD = ", round(ease_desc$SD, 2),
+  ", alpha = ", round(ease_reliability_final$summary$Cronbach_Alpha[[1]], 3),
+  ", omega total = ", round(ease_reliability_final$summary$Omega_Total[[1]], 3),
   "\n",
   sep = ""
 )
 
 cat(
-  "Daily completion criterion applied: ",
-  daily_filter_applied,
-  "\n",
+  "  Item excluded: ",
+  ifelse(is.na(ease_selection$excluded_item), "none", ease_selection$excluded_item),
+  "\n\n",
   sep = ""
 )
 
-cat(
-  "Final analysis sample: ",
-  nrow(outro_analysis),
-  "\n",
-  sep = ""
-)
+cat("Open-text responses – problems: ", sum(!is.na(outro_analysis$problems_free)), "\n", sep = "")
+cat("Open-text responses – suggestions: ", sum(!is.na(outro_analysis$suggestions_free)), "\n", sep = "")
+cat("Exploratory method associations: ", nrow(method_associations), "\n\n", sep = "")
 
-cat(
-  "\nReactivity:\n",
-  "  Items used: ",
-  paste(
-    reactivity_final_items,
-    collapse = ", "
-  ),
-  "\n",
-  "  Mean: ",
-  round(
-    reactivity_index_summary$Mean,
-    2
-  ),
-  "\n",
-  "  SD: ",
-  round(
-    reactivity_index_summary$SD,
-    2
-  ),
-  "\n",
-  "  Hierarchical omega: ",
-  round(
-    reliability_summary_final %>%
-      filter(
-        Scale == "Reactivity – final"
-      ) %>%
-      pull(
-        Omega_Hierarchical
-      ),
-    3
-  ),
-  "\n",
-  sep = ""
-)
-
-cat(
-  "\nEase of Use:\n",
-  "  Items used: ",
-  paste(
-    ease_final_items,
-    collapse = ", "
-  ),
-  "\n",
-  "  Mean: ",
-  round(
-    ease_index_summary$Mean,
-    2
-  ),
-  "\n",
-  "  SD: ",
-  round(
-    ease_index_summary$SD,
-    2
-  ),
-  "\n",
-  "  Hierarchical omega: ",
-  round(
-    reliability_summary_final %>%
-      filter(
-        Scale == "Ease of Use – final"
-      ) %>%
-      pull(
-        Omega_Hierarchical
-      ),
-    3
-  ),
-  "\n",
-  sep = ""
-)
-
-cat(
-  "\nOpen responses:\n",
-  "  Problems: ",
-  nrow(problems_free),
-  "\n",
-  "  Suggestions: ",
-  nrow(suggestions_free),
-  "\n",
-  sep = ""
-)
-
-cat(
-  "\nExcel output:\n",
-  output_excel,
-  "\n",
-  sep = ""
-)
-
-cat(
-  "\nPrepared RDS:\n",
-  output_rds,
-  "\n",
-  sep = ""
-)
-
-cat(
-  "\nFigures:\n",
-  figure_folder,
-  "\n",
-  sep = ""
-)
-
-cat(
-  "============================================================\n"
-)
+cat("Excel: ", output_excel, "\n", sep = "")
+cat("Prepared RDS: ", output_rds, "\n", sep = "")
+if (create_figures) cat("Figures: ", figure_folder, "/Outro_*.png\n", sep = "")
+cat("============================================================\n")
