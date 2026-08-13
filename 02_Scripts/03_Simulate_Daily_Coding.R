@@ -23,7 +23,7 @@
 
 
 #===============================================================================
-# 01 Settings
+# 01 Settings  [NUR FUER PIPELINE-TESTS: fuer reale Analyse simulate_coding <- FALSE]
 #===============================================================================
 
 # Einstellungen können in 04b vor dem source() gesetzt werden. Fehlen sie,
@@ -103,7 +103,7 @@ if (!"participant" %in% names(screening_sim)) {
     names(screening_sim)
   )
   if (length(participant_candidate) == 0) {
-    stop("Simulationsmodul: Kein Participant-Identifier im Screening gefunden.")
+    stop("Simulation module: no participant identifier found in the screening data.")
   }
   screening_sim$participant <- screening_sim[[participant_candidate[[1]]]]
 }
@@ -304,6 +304,7 @@ source_name_examples <- list(
   "Sonstige / Quelle nicht erkennbar" = c("Quelle nicht erkennbar")
 )
 
+names(source_name_examples) <- source_levels  # align keys to (English) source_levels by position
 sim_source_name <- rep(NA_character_, n)
 for (i in seq_len(n)) {
   source_i <- clean_text(simulation_data$source_coded[[i]])

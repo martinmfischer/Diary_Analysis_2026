@@ -567,13 +567,13 @@ item_distributions <- function(
       ) %>%
         dplyr::mutate(
           Response_Label = dplyr::case_when(
-            Response == 1 ~ "1 – Stimme überhaupt nicht zu",
+            Response == 1 ~ "1 – Strongly disagree",
             Response == 2 ~ "2",
             Response == 3 ~ "3",
             Response == 4 ~ "4",
-            Response == 5 ~ "5 – Stimme voll und ganz zu",
+            Response == 5 ~ "5 – Strongly agree",
             is.na(Response) ~ "Missing",
-            TRUE ~ "Ungültiger Wert"
+            TRUE ~ "Invalid value"
           )
         ) %>%
         dplyr::count(
@@ -668,10 +668,10 @@ calculate_scale_reliability <- function(
   ) {
     warning(
       scale_name,
-      ": Reliabilität kann möglicherweise nicht stabil berechnet werden. ",
-      "Vollständige Fälle: ",
+      ": reliability may not be estimated stably. ",
+      "Complete cases: ",
       n_complete,
-      "; Items ohne Varianz: ",
+      "; items without variance: ",
       paste(
         zero_variance_items,
         collapse = ", "
@@ -688,7 +688,7 @@ calculate_scale_reliability <- function(
     error = function(e) {
       warning(
         scale_name,
-        ": Alpha konnte nicht berechnet werden: ",
+        ": alpha could not be computed: ",
         conditionMessage(e)
       )
       
@@ -720,7 +720,7 @@ calculate_scale_reliability <- function(
     error = function(e) {
       warning(
         scale_name,
-        ": Omega konnte nicht berechnet werden: ",
+        ": omega could not be computed: ",
         conditionMessage(e)
       )
       
@@ -871,7 +871,7 @@ calculate_scale_reliability <- function(
   ) {
     tibble::tibble(
       Scale = scale_name,
-      Note = "Alpha konnte nicht berechnet werden."
+      Note = "Alpha could not be computed."
     )
   } else {
     alpha_object$item.stats %>%
@@ -891,7 +891,7 @@ calculate_scale_reliability <- function(
   ) {
     tibble::tibble(
       Scale = scale_name,
-      Note = "Alpha konnte nicht berechnet werden."
+      Note = "Alpha could not be computed."
     )
   } else {
     alpha_object$alpha.drop %>%
@@ -1463,6 +1463,63 @@ first_existing <- function(
 }
 
 
+#-------------------------------------------------------------------------------
+# Screenshot index: single source of truth for study day, photo and filename
+#-------------------------------------------------------------------------------
+# Wird von 02_Sort_Files.R (Dateien kopieren) und 03_Create_Coding_file.R
+# (Coding-Sheet) gemeinsam genutzt, damit Studientag, Foto-Nummer und Dateiname
+# per Konstruktion übereinstimmen. Nimmt die breiten Daily-Daten (Spalten
+# daily_<n>_<feld>, inkl. daily_<n>_screenshot) und liefert eine Zeile je
+# hochgeladenem Screenshot.
+derive_screenshot_index <- function(daily, participant_folder = "05_Participants") {
+  if (!"committed" %in% names(daily)) daily$committed <- NA
+
+  daily <- daily %>%
+    dplyr::mutate(
+      dplyr::across(dplyr::matches("^daily_[0-9]+_"), as.character),
+      participant = clean_text(personalParticipantCode),
+      submission_row = dplyr::row_number(),
+      scheduled_date = suppressWarnings(as.Date(scheduled))
+    ) %>%
+    dplyr::arrange(participant, scheduled, committed, submission_row) %>%
+    dplyr::group_by(participant) %>%
+    dplyr::mutate(
+      # Studientag = Kalenderabstand zum ersten Upload (1-basiert).
+      first_scheduled_date = safe_date_min(scheduled_date),
+      study_day = as.integer(scheduled_date - first_scheduled_date) + 1L
+    ) %>%
+    dplyr::ungroup()
+
+  daily %>%
+    tidyr::pivot_longer(
+      cols = dplyr::matches("^daily_[0-9]+_"),
+      names_to = c("screenshot_slot", ".value"),
+      names_pattern = "^daily_([0-9]+)_(.+)$"
+    ) %>%
+    dplyr::mutate(
+      screenshot_slot = as.integer(screenshot_slot),
+      original_filename = clean_text(screenshot)
+    ) %>%
+    dplyr::filter(!is.na(original_filename)) %>%
+    # Foto-Nummer fortlaufend je Person und Studientag, stabil sortiert.
+    dplyr::arrange(
+      participant, study_day, scheduled, committed, submission_row, screenshot_slot
+    ) %>%
+    dplyr::group_by(participant, study_day) %>%
+    dplyr::mutate(photo = dplyr::row_number()) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(
+      ext = tools::file_ext(original_filename),
+      ext = dplyr::if_else(is.na(ext) | ext == "", "", paste0(".", ext)),
+      filename = paste0(participant, "_Tag_", study_day, "_Photo_", photo, ext),
+      filepath = file.path(
+        participant_folder, participant, paste0("Tag_", study_day), filename
+      ),
+      screenshot_id = paste0(participant, "_D", study_day, "_P", photo)
+    )
+}
+
+
 #===============================================================================
 # 07 Correlation helpers
 #===============================================================================
@@ -1534,14 +1591,14 @@ add_excel_sheet <- function(
 ) {
   if (nchar(sheet_name) > 31) {
     stop(
-      "Excel-Blattname ist länger als 31 Zeichen: ",
+      "Excel sheet name is longer than 31 characters: ",
       sheet_name
     )
   }
   
   if (sheet_name %in% names(workbook)) {
     stop(
-      "Doppelter Excel-Blattname: ",
+      "Duplicate Excel sheet name: ",
       sheet_name
     )
   }
@@ -1589,6 +1646,100 @@ add_excel_sheet <- function(
   )
   
   invisible(workbook)
+}
+
+
+#-------------------------------------------------------------------------------
+# Number formatting and publication tables (Word / .docx via flextable)
+#-------------------------------------------------------------------------------
+
+fmt_num <- function(x, digits = 2) {
+  ifelse(is.na(x), NA_character_, formatC(x, format = "f", digits = digits))
+}
+
+fmt_pct <- function(x, digits = 1) {
+  ifelse(is.na(x), NA_character_, paste0(formatC(x, format = "f", digits = digits), " %"))
+}
+
+fmt_p <- function(p) {
+  dplyr::case_when(
+    is.na(p) ~ NA_character_,
+    p < 0.001 ~ "< .001",
+    TRUE ~ formatC(p, format = "f", digits = 3)
+  )
+}
+
+fmt_ci <- function(lower, upper, digits = 2) {
+  ifelse(
+    is.na(lower) | is.na(upper),
+    NA_character_,
+    paste0("[", fmt_num(lower, digits), ", ", fmt_num(upper, digits), "]")
+  )
+}
+
+# Combines mean and standard deviation into a single "M (SD)" cell, the common
+# format in communication-science tables.
+m_sd <- function(mean, sd, digits = 2) {
+  ifelse(
+    is.na(mean),
+    NA_character_,
+    paste0(fmt_num(mean, digits), " (", fmt_num(sd, digits), ")")
+  )
+}
+
+# Writes a data frame as an APA-style table (.docx): horizontal rules only,
+# italic "Table N" caption, and an italic "Note." line. Falls back to CSV if
+# flextable/officer are unavailable. Character columns are printed as-is, so
+# pre-format numbers (e.g. via m_sd(), fmt_ci(), fmt_p()) before calling.
+save_pub_table <- function(df, path, table_number = NULL, title = NULL,
+                           note = NULL, digits = 2) {
+  df <- as.data.frame(df)
+
+  has_pkgs <- requireNamespace("flextable", quietly = TRUE) &&
+    requireNamespace("officer", quietly = TRUE)
+
+  if (!has_pkgs) {
+    csv_path <- sub("\\.docx$", ".csv", path)
+    warning("flextable/officer not available; writing CSV instead: ", csv_path)
+    utils::write.csv(df, csv_path, row.names = FALSE, fileEncoding = "UTF-8")
+    return(invisible(csv_path))
+  }
+
+  numeric_cols <- names(df)[vapply(df, is.numeric, logical(1))]
+
+  ft <- flextable::flextable(df)
+  ft <- flextable::colformat_double(ft, digits = digits)
+  ft <- flextable::theme_booktabs(ft)             # top / header / bottom rules only
+  ft <- flextable::font(ft, fontname = "Times New Roman", part = "all")
+  ft <- flextable::fontsize(ft, size = 10, part = "all")
+  ft <- flextable::bold(ft, part = "header")
+  ft <- flextable::align(ft, align = "center", part = "header")
+  ft <- flextable::align(ft, j = 1, align = "left", part = "all")
+  if (length(numeric_cols) > 0) {
+    ft <- flextable::align(ft, j = numeric_cols, align = "right", part = "body")
+  }
+  ft <- flextable::valign(ft, valign = "top", part = "all")
+  ft <- flextable::padding(ft, padding = 3, part = "all")
+
+  if (!is.null(title)) {
+    caption <- if (is.null(table_number)) title else paste0("Table ", table_number, ". ", title)
+    ft <- flextable::set_caption(
+      ft,
+      caption = flextable::as_paragraph(flextable::as_i(caption))
+    )
+  }
+  if (!is.null(note)) {
+    ft <- flextable::add_footer_lines(ft, values = paste0("Note. ", note))
+    ft <- flextable::italic(ft, part = "footer")
+    ft <- flextable::fontsize(ft, size = 9, part = "footer")
+  }
+
+  ft <- flextable::set_table_properties(ft, layout = "autofit")
+
+  doc <- officer::read_docx()
+  doc <- flextable::body_add_flextable(doc, ft)
+  print(doc, target = path)
+  invisible(path)
 }
 
 
@@ -1719,8 +1870,8 @@ scale_color_project <- function(..., values = project_palette, drop = FALSE) {
 save_project_plot <- function(
     plot,
     filename,
-    width,
-    height,
+    width = 8,
+    height = 5,
     dpi = 320
 ) {
   ggplot2::ggsave(

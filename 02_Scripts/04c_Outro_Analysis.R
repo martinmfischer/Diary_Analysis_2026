@@ -55,6 +55,7 @@ helper_script <- file.path("02_Scripts", "00_Helpers.R")
 data_folder <- "01_Data"
 output_folder <- "03_Output"
 figure_folder <- "04_Figures"
+tables_folder <- file.path("03_Output", "Tables")
 
 daily_participant_file <- file.path(
   output_folder,
@@ -103,6 +104,7 @@ source(helper_script)
 
 fs::dir_create(output_folder)
 fs::dir_create(figure_folder)
+fs::dir_create(tables_folder)
 
 
 #===============================================================================
@@ -118,12 +120,12 @@ outro_files <- fs::dir_ls(
 )
 
 if (length(outro_files) == 0) {
-  stop("Keine Outro-/Abschluss-RDS-Datei in 01_Data gefunden.")
+  stop("No outro/closing RDS file found in 01_Data.")
 }
 
 if (length(outro_files) > 1) {
   stop(
-    "Mehrere mögliche Outro-Dateien gefunden:\n- ",
+    "Multiple possible outro files found:\n- ",
     paste(outro_files, collapse = "\n- ")
   )
 }
@@ -151,7 +153,7 @@ missing_required <- setdiff(required_variables, names(outro_raw))
 
 if (length(missing_required) > 0) {
   stop(
-    "Benötigte Outro-Variablen fehlen:\n- ",
+    "Required outro variables are missing:\n- ",
     paste(missing_required, collapse = "\n- ")
   )
 }
@@ -188,14 +190,14 @@ duplicate_participants <- outro %>%
 if (nrow(duplicate_participants) > 0) {
   if (!"committed" %in% names(outro)) {
     stop(
-      "Doppelte Participant Codes im Outro, aber keine Variable `committed` ",
-      "zur eindeutigen Auswahl des letzten Abschlusses."
+      "Duplicate participant codes in the outro data, but no `committed` ",
+      "variable to unambiguously select the most recent completion."
     )
   }
   
   warning(
     nrow(duplicate_participants),
-    " doppelte Participant Codes: letzter committed-Abschluss wird verwendet."
+    " duplicate participant codes: the most recent committed completion is used."
   )
   
   outro <- outro %>%
@@ -212,8 +214,8 @@ range_issues <- purrr::map_dfr(
 
 if (nrow(range_issues) > 0) {
   stop(
-    "Outro enthält ", nrow(range_issues),
-    " Werte außerhalb der vorgesehenen Skala 1–5."
+    "Outro contains ", nrow(range_issues),
+    " values outside the intended 1-5 scale."
   )
 }
 
@@ -242,26 +244,26 @@ reactivity_items <- c(
 
 reactivity_labels <- c(
   outro_reactivity_1 =
-    "Gezielt nach hochladbaren Beiträgen gesucht",
+    "Deliberately searched for uploadable posts",
   outro_reactivity_2_reversed =
-    "Angezeigte Inhalte wirkten weniger wie zuvor",
+    "Displayed content felt less like before (reverse-coded)",
   outro_reactivity_3_reversed =
-    "Eigene Social-Media-Nutzung wich stärker vom Üblichen ab",
+    "Own use deviated more from the usual (reverse-coded)",
   outro_reactivity_4 =
-    "Mehr öffentlich relevante Inhalte angezeigt",
+    "More publicly relevant content shown",
   outro_reactivity_5_reversed =
-    "Uploads bildeten die normale Nutzung weniger gut ab"
+    "Uploads reflected normal use less well (reverse-coded)"
 )
 
 ease_labels <- c(
-  outro_ease_1 = "App ist benutzerfreundlich",
-  outro_ease_2 = "Teilnahme erfordert wenige Schritte",
-  outro_ease_3 = "Nutzung der App ist mühelos",
-  outro_ease_4 = "Fehler lassen sich schnell beheben",
-  outro_ease_5 = "App kann zuverlässig genutzt werden",
-  outro_ease_6 = "Download und Installation waren einfach",
-  outro_ease_7 = "Eingabe des Login-Codes war einfach",
-  outro_ease_8 = "Orientierung in der App war einfach"
+  outro_ease_1 = "The app is user-friendly",
+  outro_ease_2 = "Participation requires few steps",
+  outro_ease_3 = "Using the app is effortless",
+  outro_ease_4 = "Errors can be fixed quickly",
+  outro_ease_5 = "The app can be used reliably every time",
+  outro_ease_6 = "Downloading and installing was easy",
+  outro_ease_7 = "Entering the login code was easy",
+  outro_ease_8 = "Finding my way around the app was easy"
 )
 
 
@@ -300,8 +302,8 @@ if (file.exists(daily_participant_file)) {
   
 } else {
   warning(
-    "daily_participant_level.rds nicht gefunden; Outro wird nur nach ",
-    "vollständigem Abschluss gefiltert."
+    "daily_participant_level.rds not found; outro is filtered only by ",
+    "complete questionnaire."
   )
   
   outro_analysis <- outro %>%
@@ -309,7 +311,7 @@ if (file.exists(daily_participant_file)) {
 }
 
 if (nrow(outro_analysis) == 0) {
-  stop("Nach Anwendung der Outro-/Daily-Kriterien verbleiben keine Fälle.")
+  stop("No cases remain after applying the outro/daily criteria.")
 }
 
 
@@ -419,7 +421,7 @@ ease_desc <- descriptive_summary(
 scale_table <- bind_rows(
   reactivity_desc %>%
     transmute(
-      Scale = "Reaktivität",
+      Scale = "Reactivity",
       N = N_Valid,
       Items = length(reactivity_final_items),
       M = Mean,
@@ -428,8 +430,9 @@ scale_table <- bind_rows(
       CI95_Upper,
       Alpha = reactivity_reliability_final$summary$Cronbach_Alpha[[1]],
       Omega_Total = reactivity_reliability_final$summary$Omega_Total[[1]],
+      Omega_Hierarchical = reactivity_reliability_final$summary$Omega_Hierarchical[[1]],
       Excluded_Item = reactivity_selection$excluded_item,
-      Interpretation = "Höher = stärkere studienbedingte Reaktivität"
+      Interpretation = "Higher = stronger study-induced reactivity"
     ),
   ease_desc %>%
     transmute(
@@ -442,13 +445,14 @@ scale_table <- bind_rows(
       CI95_Upper,
       Alpha = ease_reliability_final$summary$Cronbach_Alpha[[1]],
       Omega_Total = ease_reliability_final$summary$Omega_Total[[1]],
+      Omega_Hierarchical = ease_reliability_final$summary$Omega_Hierarchical[[1]],
       Excluded_Item = ease_selection$excluded_item,
-      Interpretation = "Höher = bessere wahrgenommene Benutzerfreundlichkeit"
+      Interpretation = "Higher = better perceived ease of use"
     )
 ) %>%
   mutate(
     across(c(M, SD, CI95_Lower, CI95_Upper), ~ round(.x, 2)),
-    across(c(Alpha, Omega_Total), ~ round(.x, 3))
+    across(c(Alpha, Omega_Total, Omega_Hierarchical), ~ round(.x, 3))
   )
 
 
@@ -464,9 +468,9 @@ reactivity_item_table <- item_descriptives(
   reactivity_labels
 ) %>%
   mutate(
-    Scale = "Reaktivität",
+    Scale = "Reactivity",
     Item_Number = match(Item, reactivity_items),
-    Coding = "Richtungsgereinigt: höher = mehr Reaktivität"
+    Coding = "Direction-aligned: higher = more reactivity"
   )
 
 ease_item_table <- item_descriptives(
@@ -480,7 +484,7 @@ ease_item_table <- item_descriptives(
     Coding = if_else(
       Item_Number <= 5,
       "Core usability",
-      "App-spezifisch"
+      "App-specific"
     )
   )
 
@@ -488,7 +492,7 @@ item_table <- bind_rows(
   reactivity_item_table,
   ease_item_table
 ) %>%
-  arrange(factor(Scale, levels = c("Reaktivität", "Ease of Use")), Item_Number) %>%
+  arrange(factor(Scale, levels = c("Reactivity", "Ease of Use")), Item_Number) %>%
   transmute(
     Scale,
     Item = Item_Number,
@@ -538,20 +542,20 @@ if (!is.null(daily_participant)) {
 
 association_specs <- tribble(
   ~Family, ~X, ~Y, ~X_Label, ~Y_Label,
-  "Skalenbezug", "reactivity_index", "ease_index",
-  "Reaktivität", "Ease of Use",
-  "Reaktivität × Diary", "reactivity_index", "upload_count_day_slope",
-  "Reaktivität", "Trend der Uploadzahl über die Tage",
-  "Reaktivität × Diary", "reactivity_index", "targeted_post_day_slope",
-  "Reaktivität", "Trend gezielter Exposition über die Tage",
-  "Reaktivität × Diary", "reactivity_index", "thorough_reading_day_slope",
-  "Reaktivität", "Trend gründlicher Rezeption über die Tage",
-  "Reaktivität × Diary", "reactivity_index", "absolute_incidentality_gap_broad",
-  "Reaktivität", "Absoluter Screening–Diary-Incidentality-Gap",
-  "Ease × Teilnahme", "ease_index", "n_screenshots",
-  "Ease of Use", "Anzahl hochgeladener Screenshots",
-  "Ease × Teilnahme", "ease_index", "n_active_days",
-  "Ease of Use", "Anzahl aktiver Diary-Tage"
+  "Scale relation", "reactivity_index", "ease_index",
+  "Reactivity", "Ease of use",
+  "Reactivity x diary", "reactivity_index", "upload_count_day_slope",
+  "Reactivity", "Trend in upload count over days",
+  "Reactivity x diary", "reactivity_index", "targeted_post_day_slope",
+  "Reactivity", "Trend in targeted exposure over days",
+  "Reactivity x diary", "reactivity_index", "thorough_reading_day_slope",
+  "Reactivity", "Trend in thorough reading over days",
+  "Reactivity x diary", "reactivity_index", "absolute_incidentality_gap_broad",
+  "Reactivity", "Absolute screening-diary incidental-exposure gap",
+  "Ease x participation", "ease_index", "n_screenshots",
+  "Ease of use", "Number of uploaded screenshots",
+  "Ease x participation", "ease_index", "n_active_days",
+  "Ease of use", "Number of active diary days"
 )
 
 available_associations <- association_specs %>%
@@ -582,7 +586,7 @@ method_associations <- if (nrow(available_associations) > 0) {
       Spearman_Rho = round(Spearman_Rho, 3),
       P_Value = round(P_Value, 4),
       P_Adjusted_BH = round(P_Adjusted_BH, 4),
-      Note = "Explorativ; Teilnehmer-Ebene"
+      Note = "Exploratory; participant level"
     )
 } else {
   tibble(
@@ -619,8 +623,8 @@ open_text <- outro_analysis %>%
   mutate(
     Question = recode(
       Question,
-      problems_free = "Probleme / Unsicherheiten",
-      suggestions_free = "Verbesserungsvorschläge"
+      problems_free = "Problems / uncertainties",
+      suggestions_free = "Suggestions for improvement"
     ),
     Response = str_squish(Response),
     Word_Count = str_count(Response, "\\S+")
@@ -629,53 +633,54 @@ open_text <- outro_analysis %>%
   arrange(Question, participant)
 
 open_text_question_levels <- c(
-  "Probleme / Unsicherheiten",
-  "Verbesserungsvorschläge"
+  "Problems / uncertainties",
+  "Suggestions for improvement"
 )
 
-# Transparente, methodisch relevante Themenmarker. Mehrfachzuordnungen sind
-# ausdrücklich erlaubt: Eine Antwort kann z.B. gleichzeitig Upload- und
-# Navigationsprobleme ansprechen.
+# Transparent, methodologically relevant theme markers. Multiple assignments are
+# explicitly allowed: one response may address, e.g., both upload and navigation
+# problems. Theme names are English; keyword patterns stay German to match the
+# German responses.
 open_text_theme_dictionary <- tribble(
   ~Scope, ~Theme, ~Pattern,
-  "Probleme / Unsicherheiten",
-  "Keine Probleme / Unsicherheiten",
+  "Problems / uncertainties",
+  "No problems / uncertainties",
   "^\\s*(nein|nö|keine?( probleme?| schwierigkeiten?| unsicherheiten?)?|nichts|alles (gut|okay|ok)|problemlos|hat (gut|alles) funktioniert)[.! ]*$",
-  "Verbesserungsvorschläge",
-  "Keine Verbesserungsvorschläge",
+  "Suggestions for improvement",
+  "No suggestions",
   "^\\s*(nein|nö|keine?( vorschläge?| anmerkungen?| verbesserungen?)?|nichts|alles (gut|okay|ok)|so (ist|passt) es gut)[.! ]*$",
-  "Beide",
-  "Installation / Login / Code",
+  "Both",
+  "Installation / login / code",
   "install|download|login|log-in|einlog|anmeld|registr|teilnehmer.?code|login.?code|code eing",
-  "Beide",
-  "Upload / Screenshot / Medienauswahl",
+  "Both",
+  "Upload / screenshot / media selection",
   "upload|hochlad|screenshot|screen.?shot|foto|bild|aufnahme|galerie|kamera|datei ausw",
-  "Beide",
-  "Navigation / Bedienung",
+  "Both",
+  "Navigation / operation",
   "navig|orientier|bedien|menü|menu|button|schaltfläche|zurück|weiter|seite wechsel|finde? nicht|gefunden",
-  "Beide",
-  "Technische Stabilität / Verbindung",
+  "Both",
+  "Technical stability / connection",
   "absturz|abgestürzt|häng|fehler|bug|funktioniert? nicht|ging nicht|laden|lädt|verbind|internet|netz|sync|synchron",
-  "Beide",
-  "Erinnerungen / Zeitpunkt",
+  "Both",
+  "Reminders / timing",
   "erinner|benachr|notification|push|uhrzeit|zeitpunkt|morgens|abends|früh|spät",
-  "Beide",
-  "Verständlichkeit / Aufgabenstellung",
+  "Both",
+  "Comprehensibility / task",
   "unklar|unverständlich|verständlich|unsicher|frage|formulierung|definition|öffentlich.? relevant|relevan.*inhalt|was.*hochlad|welche.*beitr",
-  "Beide",
-  "Lesbarkeit / visuelles Design",
+  "Both",
+  "Readability / visual design",
   "schrift|lesbar|schriftgröße|größe der schrift|design|layout|farbe|kontrast|darstellung|optik",
-  "Beide",
-  "Aufwand / Länge / Schritte",
+  "Both",
+  "Effort / length / steps",
   "aufwand|zeitaufw|mühsam|umständ|zu lang|lange gedauert|viele schritte|weniger schritte|dauer",
-  "Beide",
-  "Datenschutz / Privatsphäre",
+  "Both",
+  "Data protection / privacy",
   "datenschutz|privat|privacy|persönliche daten|personenbezogen|sicherheit|zugriff.*daten",
-  "Beide",
-  "Gerät / Plattform / Kompatibilität",
+  "Both",
+  "Device / platform / compatibility",
   "iphone|ipad|ios|android|smartphone|tablet|motorola|facebook|instagram|tiktok|twitter|\\bx\\b|plattform",
-  "Beide",
-  "Positive Nutzungserfahrung",
+  "Both",
+  "Positive user experience",
   "benutzerfreund|übersichtlich|intuitiv|einfach|problemlos|gut funktioniert|zufrieden|unkompliziert"
 )
 
@@ -685,7 +690,7 @@ open_text_themes <- if (nrow(open_text) > 0) {
     open_text,
     open_text_theme_dictionary
   ) %>%
-    filter(Scope == "Beide" | Scope == Question) %>%
+    filter(Scope == "Both" | Scope == Question) %>%
     filter(
       str_detect(
         Response,
@@ -851,11 +856,12 @@ md_escape <- function(x) {
 }
 
 md_table <- function(data) {
-  if (nrow(data) == 0) return("_Keine Daten._")
+  if (nrow(data) == 0) return("_No data._")
   
   x <- as.data.frame(
     lapply(data, md_escape),
-    stringsAsFactors = FALSE
+    stringsAsFactors = FALSE,
+    check.names = FALSE
   )
   
   c(
@@ -875,7 +881,7 @@ make_theme_sentence <- function(question) {
     slice_head(n = 3)
   
   if (nrow(top) == 0) {
-    return("Für diese Frage wurden keine Antworten durch die heuristischen Themenmarker erfasst.")
+    return("No responses were captured by the heuristic theme markers for this question.")
   }
   
   pieces <- paste0(
@@ -885,7 +891,7 @@ make_theme_sentence <- function(question) {
   )
   
   paste0(
-    "Die am häufigsten markierten Themen waren ",
+    "The most frequently marked themes were ",
     paste(pieces, collapse = "; "),
     "."
   )
@@ -894,27 +900,27 @@ make_theme_sentence <- function(question) {
 if (create_open_text_report) {
   report_overview <- open_text_question_summary %>%
     transmute(
-      Frage = Question,
-      Antworten = N_Responses,
-      `Antwortquote (%)` = Response_Rate,
-      `Median Wörter` = Median_Words,
-      `Nicht automatisch zugeordnet` = N_Untagged
+      Question = Question,
+      Responses = N_Responses,
+      `Response rate (%)` = Response_Rate,
+      `Median words` = Median_Words,
+      `Not auto-assigned` = N_Untagged
     )
   
   report_lines <- c(
-    "# Freitextübersicht – Abschlussbefragung",
+    "# Open-text overview - closing survey",
     "",
-    paste0("*Automatisch erzeugt am ", Sys.Date(), ".*"),
+    paste0("*Automatically generated on ", Sys.Date(), ".*"),
     "",
-    paste0("Analysestichprobe: **N = ", nrow(outro_analysis), "** Teilnehmende."),
+    paste0("Analysis sample: **N = ", nrow(outro_analysis), "** participants."),
     "",
-    "> **Einordnung:** Dieser Report ist eine deskriptive Orientierungshilfe. ",
-    "> Die Themenzuordnung basiert auf einem transparenten Schlagwort-Dictionary, ",
-    "> erlaubt Mehrfachzuordnungen und ist **keine qualitative Inhaltsanalyse**. ",
-    "> Für publikationsrelevante Aussagen sollten die Originalantworten zusätzlich ",
-    "> manuell gesichtet bzw. systematisch codiert werden.",
+    "> **Note:** This report is a descriptive orientation aid. ",
+    "> Theme assignment is based on a transparent keyword dictionary, ",
+    "> allows multiple assignments and is **not a qualitative content analysis**. ",
+    "> For publication-relevant claims, the original responses should additionally ",
+    "> be reviewed manually or coded systematically.",
     "",
-    "## Überblick",
+    "## Overview",
     "",
     md_table(report_overview),
     ""
@@ -927,17 +933,17 @@ if (create_open_text_report) {
     q_themes <- open_text_theme_summary %>%
       filter(Question == question) %>%
       transmute(
-        Thema = Theme,
+        Theme = Theme,
         N = N_Responses,
-        `Anteil der Antworten (%)` = Percent_of_Question_Responses
+        `Share of responses (%)` = Percent_of_Question_Responses
       )
     
     q_terms <- open_text_terms %>%
       filter(Question == question) %>%
       transmute(
-        Begriff = Token,
-        `Teilnehmende mit Begriff` = Participants,
-        `Vorkommen gesamt` = Occurrences
+        Term = Token,
+        `Participants using term` = Participants,
+        `Total occurrences` = Occurrences
       )
     
     report_lines <- c(
@@ -946,23 +952,23 @@ if (create_open_text_report) {
       "",
       if (nrow(q_summary) > 0) {
         paste0(
-          "**", q_summary$N_Responses, " Antworten** (",
-          q_summary$Response_Rate, " % der Analysestichprobe); ",
-          "Median = ", q_summary$Median_Words, " Wörter."
+          "**", q_summary$N_Responses, " responses** (",
+          q_summary$Response_Rate, " % of the analysis sample); ",
+          "median = ", q_summary$Median_Words, " words."
         )
       } else {
-        "Keine Antworten."
+        "No responses."
       },
       "",
       make_theme_sentence(question),
       "",
-      "### Heuristisch markierte Themen",
+      "### Heuristically marked themes",
       "",
       md_table(q_themes),
       "",
-      "### Häufige Begriffe",
+      "### Frequent terms",
       "",
-      "Gezählt wird primär, wie viele unterschiedliche Teilnehmende einen Begriff verwenden.",
+      "Primarily counts how many distinct participants use a term.",
       "",
       md_table(q_terms),
       ""
@@ -976,9 +982,9 @@ if (create_open_text_report) {
     if (length(top_themes) > 0) {
       report_lines <- c(
         report_lines,
-        "### Illustrative Antworten zu häufigen Themen",
+        "### Illustrative responses for frequent themes",
         "",
-        "Die Beispiele wurden reproduzierbar nach Nähe zur medianen Antwortlänge des jeweiligen Themes ausgewählt; sie sind nicht als repräsentative Zitate zu verstehen.",
+        "Examples were selected reproducibly by proximity to the theme's median response length; they are not to be read as representative quotes.",
         ""
       )
       
@@ -1014,12 +1020,11 @@ if (create_open_text_report) {
     
     report_lines <- c(
       report_lines,
-      "### Automatisch nicht zugeordnete Antworten",
+      "### Responses not automatically assigned",
       "",
       paste0(
-        "**n = ", nrow(q_unmatched), "**. Diese Antworten sollten bei einer ",
-        "manuellen Sichtung besonders beachtet werden, weil das Dictionary sie ",
-        "nicht abdeckt."
+        "**n = ", nrow(q_unmatched), "**. These responses deserve particular ",
+        "attention in a manual review because the dictionary does not cover them."
       ),
       ""
     )
@@ -1028,9 +1033,9 @@ if (create_open_text_report) {
   if (open_text_report_include_appendix && nrow(open_text) > 0) {
     report_lines <- c(
       report_lines,
-      "# Anhang: vollständige Freitextantworten",
+      "# Appendix: complete open-text responses",
       "",
-      "Die folgenden Antworten werden unverändert inhaltlich wiedergegeben; nur überflüssige Leerzeichen und Zeilenumbrüche wurden vereinheitlicht.",
+      "The following responses are reproduced verbatim in content; only superfluous spaces and line breaks were normalized.",
       ""
     )
     
@@ -1045,7 +1050,7 @@ if (create_open_text_report) {
       )
       
       if (nrow(q_raw) == 0) {
-        report_lines <- c(report_lines, "_Keine Antworten._", "")
+        report_lines <- c(report_lines, "_No responses._", "")
       } else {
         for (i in seq_len(nrow(q_raw))) {
           report_lines <- c(
@@ -1143,6 +1148,40 @@ openxlsx::saveWorkbook(
   overwrite = TRUE
 )
 
+# Publication-ready tables (.docx), APA-style: scales (with omega total/
+# hierarchical) and item-level descriptives.
+save_pub_table(
+  scale_table %>% transmute(
+    Scale,
+    k = Items,
+    `M (SD)` = m_sd(M, SD),
+    `95% CI` = fmt_ci(CI95_Lower, CI95_Upper),
+    `Cronbach's alpha` = fmt_num(Alpha, 2),
+    `Omega total` = fmt_num(Omega_Total, 2),
+    `Omega hierarchical` = fmt_num(Omega_Hierarchical, 2),
+    `Excluded item` = ifelse(is.na(Excluded_Item), "-", Excluded_Item)
+  ),
+  file.path(tables_folder, "Tab_Outro_Scales.docx"),
+  table_number = 8,
+  title = "Perceived reactivity and ease of use (scales)",
+  note = paste0(
+    "Items rated 1-5. Preregistration specified hierarchical omega; because both ",
+    "scales are modeled unidimensionally, omega total is the more appropriate ",
+    "estimate and the basis for the single-item-exclusion rule (deviation documented)."
+  )
+)
+save_pub_table(
+  item_table %>% transmute(
+    Scale, Item, Statement, Coding, N,
+    `M (SD)` = m_sd(M, SD),
+    `95% CI` = fmt_ci(CI95_Lower, CI95_Upper)
+  ),
+  file.path(tables_folder, "Tab_Outro_Items.docx"),
+  table_number = 9,
+  title = "Item-level descriptives (reactivity and ease of use)",
+  note = "M (SD) and 95% CI on a 1-5 scale. Reactivity items are direction-aligned (higher = more reactivity)."
+)
+
 
 #===============================================================================
 # 15 Figure: Reactivity items
@@ -1152,7 +1191,7 @@ openxlsx::saveWorkbook(
 
 if (create_figures) {
   reactivity_plot_data <- item_table %>%
-    filter(Scale == "Reaktivität") %>%
+    filter(Scale == "Reactivity") %>%
     mutate(
       Statement = forcats::fct_rev(factor(Statement, levels = unique(Statement)))
     )
@@ -1179,11 +1218,11 @@ if (create_figures) {
     ) +
     scale_x_continuous(limits = c(1, 5), breaks = 1:5) +
     labs(
-      title = "Wahrgenommene Reaktivität",
-      subtitle = "Richtungsgereinigte Itemmittelwerte mit 95%-Konfidenzintervallen",
-      x = "Zustimmung / Reaktivität (1–5)",
+      title = "Perceived reactivity",
+      subtitle = "Direction-aligned item means with 95% confidence intervals",
+      x = "Agreement / reactivity (1–5)",
       y = NULL,
-      caption = "Höhere Werte bedeuten stärkere studienbedingte Reaktivität; gestrichelt = Skalenmitte."
+      caption = "Higher values indicate stronger study-induced reactivity; dashed = scale midpoint."
     ) +
     theme_project(legend_position = "none") +
     theme(
@@ -1233,11 +1272,11 @@ if (create_figures) {
     ) +
     scale_x_continuous(limits = c(1, 5), breaks = 1:5) +
     labs(
-      title = "Wahrgenommene Benutzerfreundlichkeit",
-      subtitle = "Itemmittelwerte mit 95%-Konfidenzintervallen",
-      x = "Zustimmung / Ease of Use (1–5)",
+      title = "Perceived ease of use",
+      subtitle = "Item means with 95% confidence intervals",
+      x = "Agreement / ease of use (1–5)",
       y = NULL,
-      caption = "Höhere Werte bedeuten bessere wahrgenommene Benutzerfreundlichkeit; gestrichelt = Skalenmitte."
+      caption = "Higher values indicate better perceived ease of use; dashed = scale midpoint."
     ) +
     theme_project(legend_position = "none") +
     theme(
@@ -1261,11 +1300,11 @@ if (create_figures) {
   
   association_plot_data <- method_associations %>%
     filter(
-      Family != "Skalenbezug",
+      Family != "Scale relation",
       !is.na(Spearman_Rho)
     ) %>%
     mutate(
-      Label = paste(Predictor, "↔", Outcome),
+      Label = paste(Predictor, "~", Outcome),
       Label = forcats::fct_reorder(Label, Spearman_Rho)
     )
   
@@ -1291,11 +1330,11 @@ if (create_figures) {
       ) +
       scale_color_project() +
       labs(
-        title = "Methodische Plausibilitätschecks",
-        subtitle = "Explorative Spearman-Korrelationen auf Teilnehmendenebene",
-        x = "Spearman ρ",
+        title = "Methodological plausibility checks",
+        subtitle = "Exploratory Spearman correlations at the participant level",
+        x = "Spearman rho",
         y = NULL,
-        caption = "Explorativ; Effektgrößen dienen der methodischen Einordnung und nicht dem Nachweis kausaler Reaktivität."
+        caption = "Exploratory; effect sizes serve methodological orientation, not evidence of causal reactivity."
       ) +
       theme_project() +
       theme(panel.grid.major.y = element_blank())

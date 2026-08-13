@@ -22,7 +22,6 @@
 #
 # Input:  01_Data/taeglicher_fragebogen_screenshot_upload.rds
 # Output: 06_Coding/coding_sheet.xlsx
-#         06_Coding/coding_sheet_initial.rds
 #
 # ACHTUNG: Nach Beginn der manuellen Codierung ist die Excel-Datei maßgeblich.
 ################################################################################
@@ -45,7 +44,6 @@ data_file          <- file.path("01_Data", "taeglicher_fragebogen_screenshot_upl
 participant_folder <- "05_Participants"
 output_folder      <- "06_Coding"
 output_excel       <- file.path(output_folder, "coding_sheet.xlsx")
-output_rds         <- file.path(output_folder, "coding_sheet_initial.rds")
 
 fs::dir_create(output_folder)
 
@@ -64,37 +62,31 @@ if (file.exists(output_excel) && !overwrite_existing) {
 
 label_code <- function(x, labels) {
   dplyr::recode(as.character(x), !!!labels,
-                .default = "Ungültiger Code", .missing = NA_character_)
+                .default = "Invalid code", .missing = NA_character_)
 }
 
 collapse_interactions <- function(read, research, engagement) {
   x <- c(
-    if (!is.na(read)       && read       == 1) "Gründlich gelesen/angeschaut",
-    if (!is.na(research)   && research   == 1) "Weiter zum Thema informiert",
-    if (!is.na(engagement) && engagement == 1) "Mit dem Beitrag interagiert"
+    if (!is.na(read)       && read       == 1) "Read/watched thoroughly",
+    if (!is.na(research)   && research   == 1) "Sought further information",
+    if (!is.na(engagement) && engagement == 1) "Engaged with the post"
   )
   if (length(x) == 0) NA_character_ else paste(x, collapse = "; ")
 }
 
-make_filename <- function(participant, study_day, photo, original_filename) {
-  ext <- tools::file_ext(original_filename)
-  ext <- ifelse(is.na(ext) | ext == "", "", paste0(".", ext))
-  paste0(participant, "_Tag_", study_day, "_Photo_", photo, ext)
-}
-
 platform_labels <- c(`1` = "Facebook", `2` = "Instagram", `3` = "TikTok", `4` = "X")
 incidentality_labels <- c(
-  `1` = "Gezielt nach Thema oder Beiträgen dieses Accounts gesucht",
-  `2` = "Account gefolgt, Beitrag aber nicht gezielt gesucht",
-  `3` = "Zufällig auf den Beitrag gestoßen"
+  `1` = "Deliberately searched for this topic or this account's posts",
+  `2` = "Follows the account, but did not specifically seek the post",
+  `3` = "Came across the post by chance"
 )
-locality_labels <- c(`1` = "Zu Hause", `2` = "Unterwegs", `3` = "Weiß nicht mehr")
+locality_labels <- c(`1` = "At home", `2` = "Out and about", `3` = "Don't know")
 situation_labels <- c(
-  `1` = "Plattform allein genutzt",
-  `2` = "Plattform gemeinsam mit jemand anderem genutzt",
-  `3` = "Weiß nicht mehr"
+  `1` = "Used the platform alone",
+  `2` = "Used the platform together with someone else",
+  `3` = "Don't know"
 )
-interaction_labels <- c(`1` = "Ja", `0` = "Nein", `-1` = "Keine Angabe")
+interaction_labels <- c(`1` = "Yes", `0` = "No", `-1` = "No answer")
 
 
 #===============================================================================
@@ -112,35 +104,10 @@ if (!any(str_detect(names(daily), "^daily_[0-9]+_screenshot$"))) {
   stop("Keine Variablen nach dem Muster daily_[n]_screenshot gefunden.")
 }
 
-if (!"committed" %in% names(daily)) daily$committed <- NA
-
-# Alle Screenshot-Slot-Variablen zunächst als Text: verhindert Typkonflikte
-# zwischen einzelnen daily_1_..., daily_2_... etc. beim Pivotieren.
-daily <- daily %>%
-  mutate(
-    across(matches("^daily_[0-9]+_"), as.character),
-    participant = clean_text(personalParticipantCode),
-    submission_row = row_number(),
-    scheduled_date = suppressWarnings(as.Date(scheduled))
-  ) %>%
-  arrange(participant, scheduled, committed, submission_row) %>%
-  group_by(participant) %>%
-  mutate(
-    first_scheduled_date = safe_date_min(scheduled_date),
-    study_day = as.integer(scheduled_date - first_scheduled_date) + 1
-  ) %>%
-  ungroup() %>%
-  group_by(participant, scheduled_date) %>%
-  mutate(submission_within_day = row_number()) %>%
-  ungroup()
-
-coding <- daily %>%
-  pivot_longer(
-    cols = matches("^daily_[0-9]+_"),
-    names_to = c("screenshot_slot", ".value"),
-    names_pattern = "^daily_([0-9]+)_(.+)$"
-  ) %>%
-  mutate(screenshot_slot = as.integer(screenshot_slot))
+# Studientag, Foto-Nummer, Dateiname, Pfad und screenshot_id stammen aus der
+# gemeinsamen Funktion (00_Helpers.R), die auch 02_Sort_Files.R nutzt. So passen
+# Coding-Sheet und kopierte Dateien per Konstruktion zusammen.
+coding <- derive_screenshot_index(daily, participant_folder = participant_folder)
 
 # Optionale Felder ergänzen, falls eine GESIS-Version sie nicht enthält.
 expected_fields <- c(
@@ -149,10 +116,6 @@ expected_fields <- c(
   "locality", "situation", "startstop"
 )
 for (x in setdiff(expected_fields, names(coding))) coding[[x]] <- NA
-
-coding <- coding %>%
-  mutate(original_filename = clean_text(screenshot)) %>%
-  filter(!is.na(original_filename))
 
 if (any(is.na(coding$participant))) {
   stop("Mindestens ein Screenshot besitzt keinen gültigen Participant Code.")
@@ -195,19 +158,8 @@ coding <- coding %>%
       TRUE ~ NA_character_
     )
   ) %>%
-  arrange(participant, study_day, scheduled, committed, submission_row, screenshot_slot) %>%
-  group_by(participant, study_day) %>%
-  mutate(photo = row_number()) %>%
-  ungroup() %>%
-  rowwise() %>%
   mutate(
-    filename = make_filename(participant, study_day, photo, original_filename),
-    filepath = file.path(participant_folder, participant, paste0("Tag_", study_day), filename),
     file_exists = fs::file_exists(filepath),
-    screenshot_id = paste0(participant, "_D", study_day, "_P", photo)
-  ) %>%
-  ungroup() %>%
-  mutate(
     # Manual coding
     public_rel_coded  = NA_integer_,
     topic_coded       = NA_character_,
@@ -251,14 +203,12 @@ technical_cols <- c(
   "platform_code", "incidentality_code",
   "interaction_read_code", "interaction_research_code", "interaction_engagement_code",
   "locality_code", "situation_code", "startstop_raw",
-  "original_filename", "screenshot_slot", "submission_row", "submission_within_day",
+  "original_filename", "screenshot_slot", "submission_row",
   "scheduled", "committed"
 )
 
 coding_export <- coding %>%
   select(all_of(c(id_cols, coding_cols, visible_info_cols, hidden_info_cols, technical_cols)))
-
-saveRDS(coding_export, output_rds)
 
 
 #===============================================================================
@@ -272,10 +222,10 @@ n_participant_days <- coding_export %>%
 
 quality_summary <- tibble(
   Indicator = c(
-    "Screenshots insgesamt", "Teilnehmende", "Teilnehmertage",
-    "Dateien gefunden", "Dateien nicht gefunden",
-    "Fehlende Plattformangaben", "Fehlende Incidentality-Angaben",
-    "Studientag außerhalb 1–7"
+    "Screenshots total", "Participants", "Participant-days",
+    "Files found", "Files not found",
+    "Missing platform values", "Missing incidental-exposure values",
+    "Study day outside 1-7"
   ),
   Value = c(
     nrow(coding_export),
@@ -296,30 +246,30 @@ missing_files <- coding_export %>%
 
 codebook <- tribble(
   ~Variable, ~Code, ~Category, ~Rule,
-  "public_rel_coded", "1", "Öffentlich relevant",
-  "Information, Meinung, Bewertung, Einordnung oder Handlungsorientierung mit Bedeutung über den privaten Kreis hinaus.",
-  "public_rel_coded", "0", "Nicht öffentlich relevant",
-  "Ausschließlich private, persönliche, selbstdarstellerische, rein unterhaltende oder rein kommerzielle Funktion ohne öffentlichen Bezug.",
-  "public_rel_coded", "-1", "Nicht beurteilbar",
-  "Screenshot technisch unbrauchbar oder inhaltlich nicht zuverlässig beurteilbar.",
-  "topic_coded", "", "Hauptthema", "Nur bei public_rel_coded = 1; gemäß Topic-Codebuch.",
-  "source_coded", "", "Quellentyp", "Nur bei public_rel_coded = 1; gemäß Source-Codebuch.",
-  "source_name_coded", "", "Konkrete Quelle", "Nur bei public_rel_coded = 1; sichtbarer Account-/Quellenname.",
-  "platform_coded", "", "Geprüfte Plattform", "Vorausgefüllt; bei Bedarf korrigieren.",
-  "media_format", "1", "Text-/linkbasiert",
-  "Nativer Textpost oder standardisierte Link-/Artikelvorschau; Caption eines Bild-/Videoposts ignorieren.",
-  "media_format", "2", "Statisches visuelles Format",
-  "Foto, Illustration, Grafik, Meme, Texttafel, Infografik oder rein statisches Carousel.",
-  "media_format", "3", "Bewegtes audiovisuelles Format",
-  "Video, Reel, TikTok, GIF oder Animation; auch bei Texteinblendungen oder Untertiteln.",
-  "media_format", "4", "Gemischtes Medienformat",
-  "Tatsächliche Kombination aus statischen und bewegten Medienbestandteilen im selben Post.",
-  "media_format", "-1", "Nicht bestimmbar", "Postformat ist aus dem Screenshot nicht zuverlässig erkennbar.",
-  "notes", "", "Notizen", "Nur bei Grenzfällen oder Besonderheiten.",
-  "coder", "", "Coder", "Kürzel oder Name.",
-  "coding_completed", "TRUE/FALSE", "Coding abgeschlossen",
-  "TRUE erst nach finaler Prüfung; bei public_rel_coded = 0/-1 bleiben Topic, Source und Format leer.",
-  "coding_date", "", "Codierdatum", "Datum der finalen Codierung."
+  "public_rel_coded", "1", "Publicly relevant",
+  "Information, opinion, evaluation, contextualization or action orientation with meaning beyond the private circle.",
+  "public_rel_coded", "0", "Not publicly relevant",
+  "Purely private, personal, self-presentational, purely entertaining or purely commercial function without public reference.",
+  "public_rel_coded", "-1", "Not assessable",
+  "Screenshot technically unusable or content not reliably assessable.",
+  "topic_coded", "", "Main topic", "Only if public_rel_coded = 1; per the topic codebook.",
+  "source_coded", "", "Source type", "Only if public_rel_coded = 1; per the source codebook.",
+  "source_name_coded", "", "Concrete source", "Only if public_rel_coded = 1; visible account/source name.",
+  "platform_coded", "", "Verified platform", "Pre-filled; correct if needed.",
+  "media_format", "1", "Text/link-based",
+  "Native text post or standardized link/article preview; ignore the caption of an image/video post.",
+  "media_format", "2", "Static visual format",
+  "Photo, illustration, graphic, meme, text card, infographic or purely static carousel.",
+  "media_format", "3", "Moving audiovisual format",
+  "Video, reel, TikTok, GIF or animation; also with text overlays or subtitles.",
+  "media_format", "4", "Mixed media format",
+  "Actual combination of static and moving media elements within the same post.",
+  "media_format", "-1", "Not determinable", "Post format cannot be reliably identified from the screenshot.",
+  "notes", "", "Notes", "Only for borderline cases or particularities.",
+  "coder", "", "Coder", "Initials or name.",
+  "coding_completed", "TRUE/FALSE", "Coding completed",
+  "TRUE only after final review; for public_rel_coded = 0/-1 leave topic, source and format empty.",
+  "coding_date", "", "Coding date", "Date of the final coding."
 )
 
 
@@ -420,14 +370,14 @@ if (nrow(coding_export) > 0) {
 openxlsx::writeComment(
   wb, "Coding", match("public_rel_coded", names(coding_export)), 1,
   openxlsx::createComment(
-    "1 = öffentlich relevant\n0 = nicht öffentlich relevant\n-1 = nicht beurteilbar\n\nBei 0/-1 Topic, Source und Format leer lassen.",
+    "1 = publicly relevant\n0 = not publicly relevant\n-1 = not assessable\n\nFor 0/-1 leave topic, source and format empty.",
     author = "Codebook"
   )
 )
 openxlsx::writeComment(
   wb, "Coding", match("media_format", names(coding_export)), 1,
   openxlsx::createComment(
-    "1 = Text/Link\n2 = statisch visuell\n3 = bewegt/audiovisuell\n4 = statisch + bewegt\n-1 = nicht bestimmbar\n\nCaption ignorieren.",
+    "1 = text/link\n2 = static visual\n3 = moving/audiovisual\n4 = static + moving\n-1 = not determinable\n\nIgnore the caption.",
     author = "Codebook"
   )
 )
@@ -470,7 +420,7 @@ openxlsx::addWorksheet(wb, "Quality", gridLines = FALSE)
 openxlsx::writeDataTable(wb, "Quality", quality_summary, tableStyle = "TableStyleMedium2")
 if (nrow(missing_files) > 0) {
   start <- nrow(quality_summary) + 4
-  openxlsx::writeData(wb, "Quality", "Nicht gefundene Dateien", startRow = start)
+  openxlsx::writeData(wb, "Quality", "Files not found", startRow = start)
   openxlsx::writeDataTable(
     wb, "Quality", missing_files, startRow = start + 1,
     tableStyle = "TableStyleMedium2"
@@ -491,6 +441,5 @@ cat(
   "Participants:  ", n_distinct(coding_export$participant, na.rm = TRUE), "\n",
   "Files missing: ", nrow(missing_files), "\n",
   "Excel:         ", output_excel, "\n",
-  "Initial RDS:   ", output_rds, "\n",
   sep = ""
 )

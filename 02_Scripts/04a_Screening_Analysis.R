@@ -33,12 +33,14 @@ data_file <- file.path("01_Data", "screening-befragung_tagebuchstudie.rds")
 output_excel <- file.path("03_Output", "Screening_Results.xlsx")
 output_rds <- file.path("03_Output", "screening_prepared.rds")
 figure_folder <- "04_Figures"
+tables_folder <- file.path("03_Output", "Tables")
 
 if (!file.exists(helper_script)) stop("Helper-Script fehlt: ", helper_script)
 if (!file.exists(data_file)) stop("Screening-Datei fehlt: ", data_file)
 source(helper_script)
 
 fs::dir_create("03_Output")
+fs::dir_create(tables_folder)
 if (create_figures) fs::dir_create(figure_folder)
 
 if (!overwrite_outputs && any(file.exists(c(output_excel, output_rds)))) {
@@ -67,7 +69,7 @@ required_variables <- c(
 
 missing_variables <- setdiff(required_variables, names(screening_raw))
 if (length(missing_variables) > 0) {
-  stop("Fehlende Screening-Variablen: ", paste(missing_variables, collapse = ", "))
+  stop("Missing screening variables: ", paste(missing_variables, collapse = ", "))
 }
 
 screening_all <- screening_raw %>%
@@ -81,7 +83,7 @@ screening_all <- screening_raw %>%
 
 n_missing_codes <- sum(is.na(screening_all$participant))
 if (n_missing_codes > 0) {
-  warning(n_missing_codes, " Screening-Zeilen ohne Participant Code werden ausgeschlossen.")
+  warning(n_missing_codes, " screening rows without a participant code are excluded.")
 }
 
 duplicate_codes <- screening_all %>%
@@ -90,7 +92,7 @@ duplicate_codes <- screening_all %>%
   filter(n > 1)
 
 if (nrow(duplicate_codes) > 0) {
-  stop("Doppelte Participant Codes: ", paste(duplicate_codes$participant, collapse = ", "))
+  stop("Duplicate participant codes: ", paste(duplicate_codes$participant, collapse = ", "))
 }
 
 screening <- screening_all %>%
@@ -147,52 +149,52 @@ range_issues <- purrr::pmap_dfr(
 
 if (nrow(range_issues) > 0) {
   stop(
-    "Werte außerhalb des erwarteten Bereichs: ",
+    "Values outside the expected range: ",
     paste(unique(range_issues$Variable), collapse = ", ")
   )
 }
 
 
 #===============================================================================
-# 03 Labels + zentrale Personenmerkmale
+# 03 Labels and core participant characteristics
 #===============================================================================
-# Hier werden nur Variablen erzeugt, die wir beschreiben oder später in
-# Daily/Outro wiederverwenden.
+# Only variables that are reported here or reused later in Daily/Outro.
 
 frequency_levels <- c(
-  "Nie", "Seltener als einmal im Monat", "Einmal im Monat",
-  "Zwei- bis dreimal im Monat", "Einmal pro Woche", "Mehrmals pro Woche",
-  "Einmal täglich", "Mehrmals täglich"
+  "Never", "Less than once a month", "Once a month",
+  "Two to three times a month", "Once a week", "Several times a week",
+  "Once a day", "Several times a day"
 )
 
 screening <- screening %>%
   mutate(
-    gender = factor(intro_gender, 1:3, c("Weiblich", "Männlich", "Divers")),
+    gender = factor(intro_gender, 1:3, c("Female", "Male", "Diverse")),
     education = factor(
       intro_education, 1:8,
       c(
-        "Schule ohne Abschluss beendet", "Haupt-/Volksschulabschluss",
-        "Realschulabschluss/Mittlere Reife", "Polytechnische Oberschule",
-        "Fachhochschulreife", "Abitur/Hochschulreife",
-        "Hochschulabschluss", "Anderer Abschluss"
+        "Left school without a degree", "Lower secondary degree",
+        "Intermediate secondary degree", "Polytechnic secondary school",
+        "University of applied sciences entrance qualification",
+        "Higher education entrance qualification (Abitur)",
+        "University degree", "Other qualification"
       )
     ),
     education_three_level = factor(
       case_when(
-        intro_education %in% 1:2 ~ "Niedrig",
-        intro_education %in% 3:4 ~ "Mittel",
-        intro_education %in% 5:7 ~ "Hoch",
+        intro_education %in% 1:2 ~ "Low",
+        intro_education %in% 3:4 ~ "Medium",
+        intro_education %in% 5:7 ~ "High",
         TRUE ~ NA_character_
       ),
-      levels = c("Niedrig", "Mittel", "Hoch")
+      levels = c("Low", "Medium", "High")
     ),
     context_local = factor(
       intro_context_local, 1:3,
-      c("Zu Hause", "Unterwegs", "An beiden Orten ähnlich häufig")
+      c("At home", "Out and about", "About equally in both places")
     ),
     context_social = factor(
       intro_context_situation, 1:3,
-      c("Überwiegend allein", "Überwiegend gemeinsam", "Beides ähnlich häufig")
+      c("Mostly alone", "Mostly with others", "About equally alone and with others")
     ),
     age_group = cut(
       intro_age_num,
@@ -204,10 +206,10 @@ screening <- screening %>%
 
 
 #===============================================================================
-# 04 Plattformnutzung
+# 04 Platform use
 #===============================================================================
-# Beschreibt die Plattformökologie der Personen. Für spätere Analysen bleiben
-# Frequenzen, wöchentlich/täglich genutzte Plattformen und Primärplattform erhalten.
+# Describes participants' platform ecology. Frequencies, weekly/daily platforms
+# and the primary platform are retained for later analyses.
 
 platform_long <- screening %>%
   select(
@@ -235,7 +237,7 @@ platform_profile <- platform_long %>%
         NA_character_
       } else {
         m <- max(Usage_Frequency, na.rm = TRUE)
-        if (m <= 1) "Keine Plattform genutzt" else
+        if (m <= 1) "No platform used" else
           paste(Platform[!is.na(Usage_Frequency) & Usage_Frequency == m], collapse = " / ")
       }
     },
@@ -256,14 +258,14 @@ screening <- screening %>%
     Platform_Repertoire = factor(
       case_when(
         is.na(N_Platforms_Weekly) ~ NA_character_,
-        N_Platforms_Weekly == 0 ~ "Keine Plattform wöchentlich",
-        N_Platforms_Weekly == 1 ~ "Eine Plattform wöchentlich",
-        TRUE ~ "Mehrere Plattformen wöchentlich"
+        N_Platforms_Weekly == 0 ~ "No platform weekly",
+        N_Platforms_Weekly == 1 ~ "One platform weekly",
+        TRUE ~ "Multiple platforms weekly"
       ),
       levels = c(
-        "Keine Plattform wöchentlich",
-        "Eine Plattform wöchentlich",
-        "Mehrere Plattformen wöchentlich"
+        "No platform weekly",
+        "One platform weekly",
+        "Multiple platforms weekly"
       )
     ),
     freq_facebook_label = factor(intro_freq_facebook, 1:8, frequency_levels, ordered = TRUE),
@@ -272,8 +274,8 @@ screening <- screening %>%
     freq_x_label = factor(intro_freq_x, 1:8, frequency_levels, ordered = TRUE)
   )
 
-# Plausibilitätscheck: Das Stop-Item sollte durch mindestens eine wöchentlich
-# genutzte Plattform gestützt werden. Fälle werden nur markiert, nicht entfernt.
+# Plausibility check: the stop item should be backed by at least one platform
+# used weekly. Cases are only flagged, not removed.
 screening <- screening %>%
   mutate(
     platform_eligibility_consistent = case_when(
@@ -286,21 +288,21 @@ screening <- screening %>%
 
 n_eligibility_inconsistencies <- sum(screening$platform_eligibility_consistent %in% FALSE, na.rm = TRUE)
 if (n_eligibility_inconsistencies > 0) {
-  warning(n_eligibility_inconsistencies, " Fälle: Stop-Item und Plattformfrequenzen sind inkonsistent.")
+  warning(n_eligibility_inconsistencies, " cases: stop item and platform frequencies are inconsistent.")
 }
 
 
 #===============================================================================
-# 05 Informationsbedürfnisse
+# 05 Information needs
 #===============================================================================
-# Neben den vier Einzelmaßen werden zwei knappe Profilmerkmale gebildet:
-# durchschnittliche Wichtigkeit und Differenzierung zwischen stärkstem/schwächstem Bedürfnis.
+# Besides the four single measures, two compact profile features are built:
+# average importance and differentiation between strongest/weakest need.
 
 need_labels <- c(
-  intro_ib_undirected = "Ungerichtet",
-  intro_ib_thematic = "Thematisch",
-  intro_ib_social = "Sozial",
-  intro_ib_problem = "Problembezogen"
+  intro_ib_undirected = "Undirected",
+  intro_ib_thematic = "Thematic",
+  intro_ib_social = "Social",
+  intro_ib_problem = "Problem-related"
 )
 
 needs_long <- screening %>%
@@ -320,7 +322,7 @@ need_profiles <- needs_long %>%
       } else {
         max_value <- max(Importance, na.rm = TRUE)
         top <- Information_Need[!is.na(Importance) & Importance == max_value]
-        if (length(top) == 1) top else "Kein eindeutiges dominantes Bedürfnis"
+        if (length(top) == 1) top else "No single dominant need"
       }
     },
     .groups = "drop"
@@ -331,10 +333,10 @@ screening <- screening %>%
 
 
 #===============================================================================
-# 06 Incidentality-Index + Reliabilität
+# 06 Incidental exposure index and reliability
 #===============================================================================
-# Item 5 wird invertiert. Der Index ist der Mittelwert aller sechs Items und wird
-# nur bei vollständigen Antworten gebildet. Berichtet werden Alpha und Omega total.
+# Item 5 is reverse-coded. The index is the mean of all six items, formed only
+# for complete responses. Alpha and omega (total and hierarchical) are reported.
 
 screening <- screening %>%
   mutate(intro_incidentality_5_reversed = 6 - intro_incidentality_5)
@@ -380,7 +382,13 @@ reliability_summary <- tibble(
   N_Complete = nrow(incidentality_complete),
   Cronbach_Alpha = if (is.null(incidentality_alpha)) NA_real_ else incidentality_alpha$total$raw_alpha,
   Omega_Total = if (is.null(incidentality_omega)) NA_real_ else incidentality_omega$omega.tot,
-  Threshold = reliability_threshold
+  Omega_Hierarchical = if (is.null(incidentality_omega)) NA_real_ else incidentality_omega$omega_h,
+  Threshold = reliability_threshold,
+  Note = paste0(
+    "Praereg.: hierarchisches Omega. Da die Skala eindimensional modelliert ist ",
+    "(nfactors = 1), ist Omega total die geeignetere Reliabilitaetsschaetzung; ",
+    "die Ausschlussentscheidung folgt daher Omega total. Abweichung dokumentiert."
+  )
 )
 
 # Itemdiagnostik bleibt drin, weil sie für die präregistrierte Entscheidung über
@@ -438,48 +446,48 @@ omega_item_deleted <- purrr::map_dfr(
 
 
 #===============================================================================
-# 07 Deskriptive Ergebnisse
+# 07 Descriptive results
 #===============================================================================
-# Diese Tabellen beantworten nur die Kernfragen zur Stichprobe, Nutzung,
-# Informationsbedürfnissen und Incidentality; Detailtabellen werden vermieden.
+# These tables address only the core questions on sample, use, information needs
+# and incidental exposure; detailed sub-tables are avoided.
 
-age_stats <- continuous_summary(screening, "intro_age_num", "Alter")
-usage_stats <- continuous_summary(screening, "intro_intensity", "Nutzungsintensität")
-incidentality_stats <- continuous_summary(screening, "incidentality_index", "Incidentality-Index")
+age_stats <- continuous_summary(screening, "intro_age_num", "Age")
+usage_stats <- continuous_summary(screening, "intro_intensity", "Usage intensity")
+incidentality_stats <- continuous_summary(screening, "incidentality_index", "Incidental exposure index")
 
 overview_output <- bind_rows(
   tibble(
     Section = "Sample",
     Measure = c(
-      "Rohzeilen", "Teilnahmeberechtigte Personen", "Fehlende Participant Codes",
-      "Inkonsistenz Stop-Item / Plattformfrequenz"
+      "Raw rows", "Eligible participants", "Missing participant codes",
+      "Stop-item / platform-frequency inconsistency"
     ),
     Category = NA_character_,
     N = c(nrow(screening_raw), nrow(screening), n_missing_codes, n_eligibility_inconsistencies),
     Percent = NA_real_, Mean = NA_real_, SD = NA_real_, Median = NA_real_, Minimum = NA_real_, Maximum = NA_real_
   ),
   age_stats %>% transmute(
-    Section = "Soziodemografie", Measure = Variable, Category = NA_character_,
+    Section = "Sociodemographics", Measure = Variable, Category = NA_character_,
     N = N_Valid, Percent = NA_real_, Mean, SD, Median, Minimum, Maximum
   ),
   usage_stats %>% transmute(
-    Section = "Nutzung", Measure = Variable, Category = NA_character_,
+    Section = "Use", Measure = Variable, Category = NA_character_,
     N = N_Valid, Percent = NA_real_, Mean, SD, Median, Minimum, Maximum
   ),
-  frequency_summary(screening, "gender", "Geschlecht") %>% transmute(
-    Section = "Soziodemografie", Measure = Variable, Category = Level,
+  frequency_summary(screening, "gender", "Gender") %>% transmute(
+    Section = "Sociodemographics", Measure = Variable, Category = Level,
     N, Percent, Mean = NA_real_, SD = NA_real_, Median = NA_real_, Minimum = NA_real_, Maximum = NA_real_
   ),
-  frequency_summary(screening, "education", "Bildungsabschluss") %>% transmute(
-    Section = "Soziodemografie", Measure = Variable, Category = Level,
+  frequency_summary(screening, "education", "Education") %>% transmute(
+    Section = "Sociodemographics", Measure = Variable, Category = Level,
     N, Percent, Mean = NA_real_, SD = NA_real_, Median = NA_real_, Minimum = NA_real_, Maximum = NA_real_
   ),
-  frequency_summary(screening, "context_local", "Typischer räumlicher Kontext") %>% transmute(
-    Section = "Kontext", Measure = Variable, Category = Level,
+  frequency_summary(screening, "context_local", "Typical spatial context") %>% transmute(
+    Section = "Context", Measure = Variable, Category = Level,
     N, Percent, Mean = NA_real_, SD = NA_real_, Median = NA_real_, Minimum = NA_real_, Maximum = NA_real_
   ),
-  frequency_summary(screening, "context_social", "Typischer sozialer Kontext") %>% transmute(
-    Section = "Kontext", Measure = Variable, Category = Level,
+  frequency_summary(screening, "context_social", "Typical social context") %>% transmute(
+    Section = "Context", Measure = Variable, Category = Level,
     N, Percent, Mean = NA_real_, SD = NA_real_, Median = NA_real_, Minimum = NA_real_, Maximum = NA_real_
   )
 )
@@ -503,21 +511,21 @@ platform_weekly <- platform_long %>%
 
 platform_output <- bind_rows(
   platform_weekly %>% transmute(
-    Section = "Mindestens wöchentlich", Platform, Category = NA_character_,
+    Section = "At least weekly", Platform, Category = NA_character_,
     N = N_Weekly, Percent = Percent_Weekly, Value = NA_real_
   ),
   platform_distribution %>% transmute(
-    Section = "Frequenzverteilung", Platform, Category = frequency_levels[Usage_Frequency],
+    Section = "Frequency distribution", Platform, Category = frequency_levels[Usage_Frequency],
     N, Percent, Value = Usage_Frequency
   ),
   screening %>% count(Platform_Repertoire, name = "N") %>% mutate(Percent = safe_percent(N, sum(N))) %>%
     transmute(
-      Section = "Plattformrepertoire", Platform = NA_character_, Category = as.character(Platform_Repertoire),
+      Section = "Platform repertoire", Platform = NA_character_, Category = as.character(Platform_Repertoire),
       N, Percent, Value = NA_real_
     ),
   screening %>% count(Primary_Platform, name = "N") %>% mutate(Percent = safe_percent(N, sum(N))) %>%
     transmute(
-      Section = "Primärplattform", Platform = NA_character_, Category = Primary_Platform,
+      Section = "Primary platform", Platform = NA_character_, Category = Primary_Platform,
       N, Percent, Value = NA_real_
     )
 )
@@ -542,16 +550,16 @@ need_distribution <- needs_long %>%
 
 information_needs_output <- bind_rows(
   need_descriptives %>% transmute(
-    Section = "Deskriptiv", Information_Need, Category = NA_character_, N,
+    Section = "Descriptive", Information_Need, Category = NA_character_, N,
     Percent = NA_real_, Mean, SD, Median, CI95_Lower, CI95_Upper
   ),
   need_distribution %>% transmute(
-    Section = "Antwortverteilung", Information_Need, Category = as.character(Importance), N,
+    Section = "Response distribution", Information_Need, Category = as.character(Importance), N,
     Percent, Mean = NA_real_, SD = NA_real_, Median = NA_real_, CI95_Lower = NA_real_, CI95_Upper = NA_real_
   ),
   screening %>% count(Dominant_Information_Need, name = "N") %>% mutate(Percent = safe_percent(N, sum(N))) %>%
     transmute(
-      Section = "Dominantes Bedürfnis", Information_Need = NA_character_,
+      Section = "Dominant need", Information_Need = NA_character_,
       Category = Dominant_Information_Need, N, Percent,
       Mean = NA_real_, SD = NA_real_, Median = NA_real_, CI95_Lower = NA_real_, CI95_Upper = NA_real_
     )
@@ -573,43 +581,43 @@ incidentality_output <- bind_rows(
     Percent = NA_real_, Mean, SD, Median, Value = NA_real_, Value_2 = NA_real_
   ),
   reliability_summary %>% transmute(
-    Section = "Reliabilität", Item = NA_character_, Category = "Gesamtskala", N = N_Complete,
+    Section = "Reliability", Item = NA_character_, Category = "Full scale", N = N_Complete,
     Percent = NA_real_, Mean = Cronbach_Alpha, SD = Omega_Total, Median = NA_real_,
     Value = Threshold, Value_2 = NA_real_
   ),
   alpha_item_stats %>% transmute(
-    Section = "Itemdiagnostik", Item, Category = NA_character_, N = NA_integer_, Percent = NA_real_,
+    Section = "Item diagnostics", Item, Category = NA_character_, N = NA_integer_, Percent = NA_real_,
     Mean = Item_Mean, SD = Item_SD, Median = NA_real_,
     Value = Corrected_Item_Total_R, Value_2 = Alpha_If_Deleted
   ),
   omega_item_deleted %>% transmute(
-    Section = "Omega bei Itemausschluss", Item = Item_Removed, Category = NA_character_,
+    Section = "Omega if item deleted", Item = Item_Removed, Category = NA_character_,
     N = NA_integer_, Percent = NA_real_, Mean = NA_real_, SD = NA_real_, Median = NA_real_,
     Value = Omega_Total_If_Deleted, Value_2 = NA_real_
   ),
   incidentality_distribution %>% transmute(
-    Section = "Itemverteilung", Item, Category = as.character(Response), N, Percent,
+    Section = "Item distribution", Item, Category = as.character(Response), N, Percent,
     Mean = NA_real_, SD = NA_real_, Median = NA_real_, Value = Response, Value_2 = NA_real_
   )
 )
 
 
 #===============================================================================
-# 08 Explorativ: Incidentality und Heterogenität der Stichprobe
+# 08 Exploratory: incidental exposure and sample heterogeneity
 #===============================================================================
-# Diese Analysen dienen der Hypothesengenerierung und als Brücke zur Diary-
-# Analyse. Wir betrachten nur theoretisch anschlussfähige Zusammenhänge.
+# These analyses are exploratory (hypothesis-generating) and bridge to the diary
+# analysis. Only theoretically meaningful associations are considered.
 
 incidentality_predictors <- c(
-  intro_age_num = "Alter",
-  intro_intensity = "Nutzungsintensität",
-  N_Platforms_Weekly = "Wöchentlich genutzte Plattformen",
-  intro_ib_undirected = "Ungerichtetes Informationsbedürfnis",
-  intro_ib_thematic = "Thematisches Informationsbedürfnis",
-  intro_ib_social = "Soziales Informationsbedürfnis",
-  intro_ib_problem = "Problembezogenes Informationsbedürfnis",
-  Mean_Importance = "Mittlere Wichtigkeit der Informationsbedürfnisse",
-  Need_Differentiation = "Differenzierung der Informationsbedürfnisse"
+  intro_age_num = "Age",
+  intro_intensity = "Usage intensity",
+  N_Platforms_Weekly = "Platforms used weekly",
+  intro_ib_undirected = "Undirected information need",
+  intro_ib_thematic = "Thematic information need",
+  intro_ib_social = "Social information need",
+  intro_ib_problem = "Problem-related information need",
+  Mean_Importance = "Mean importance of information needs",
+  Need_Differentiation = "Differentiation of information needs"
 )
 
 incidentality_correlations <- purrr::imap_dfr(
@@ -624,20 +632,20 @@ incidentality_correlations <- purrr::imap_dfr(
 ) %>%
   mutate(
     P_Adjusted_BH = p.adjust(P_Value, method = "BH"),
-    Analysis = "Incidentality-Korrelation"
+    Analysis = "Incidental exposure correlation"
   )
 
-# Alter wird zusätzlich kontinuierlich mit zentralen Nutzungs- und Bedürfnismaßen
-# verbunden. Das beschreibt Heterogenität innerhalb der 60+-Stichprobe, ohne
-# ältere Personen als Defizitgruppe zu behandeln.
+# Age is additionally related to central use and need measures. This describes
+# heterogeneity within the 60+ sample without treating older persons as a
+# deficit group.
 age_markers <- c(
-  intro_intensity = "Nutzungsintensität",
-  N_Platforms_Weekly = "Wöchentlich genutzte Plattformen",
-  intro_ib_undirected = "Ungerichtetes Informationsbedürfnis",
-  intro_ib_thematic = "Thematisches Informationsbedürfnis",
-  intro_ib_social = "Soziales Informationsbedürfnis",
-  intro_ib_problem = "Problembezogenes Informationsbedürfnis",
-  incidentality_index = "Incidentality"
+  intro_intensity = "Usage intensity",
+  N_Platforms_Weekly = "Platforms used weekly",
+  intro_ib_undirected = "Undirected information need",
+  intro_ib_thematic = "Thematic information need",
+  intro_ib_social = "Social information need",
+  intro_ib_problem = "Problem-related information need",
+  incidentality_index = "Incidental exposure"
 )
 
 age_correlations <- purrr::imap_dfr(
@@ -652,18 +660,18 @@ age_correlations <- purrr::imap_dfr(
 ) %>%
   mutate(
     P_Adjusted_BH = p.adjust(P_Value, method = "BH"),
-    Analysis = "Alters-Korrelation"
+    Analysis = "Age correlation"
   )
 
-# Subgruppen sind rein deskriptiv: Sie zeigen, ob Screening-Incidentality je nach
-# typischem Kontext oder Plattformökologie sichtbar unterschiedlich ausfällt.
+# Subgroups are purely descriptive: they show whether screening incidental
+# exposure differs visibly by typical context or platform ecology.
 subgroup_variables <- c(
-  context_local = "Räumlicher Kontext",
-  context_social = "Sozialer Kontext",
-  Platform_Repertoire = "Plattformrepertoire",
-  Primary_Platform = "Primärplattform",
-  age_group = "Altersgruppe",
-  education_three_level = "Bildung"
+  context_local = "Spatial context",
+  context_social = "Social context",
+  Platform_Repertoire = "Platform repertoire",
+  Primary_Platform = "Primary platform",
+  age_group = "Age group",
+  education_three_level = "Education"
 )
 
 incidentality_subgroups <- purrr::imap_dfr(
@@ -694,7 +702,7 @@ exploratory_output <- bind_rows(
     ),
   incidentality_subgroups %>%
     transmute(
-      Analysis = "Incidentality-Subgruppe", Grouping, Group,
+      Analysis = "Incidental exposure subgroup", Grouping, Group,
       Variable_1 = NA_character_, Variable_2 = NA_character_, N,
       Mean, SD, Median,
       Spearman_Rho = NA_real_, P_Value = NA_real_, P_Adjusted_BH = NA_real_
@@ -705,17 +713,17 @@ exploratory_output <- bind_rows(
 #===============================================================================
 # 09 Save prepared participant data
 #===============================================================================
-# Dieses RDS ist der eigentliche Übergabedatensatz für Daily und Outro. Deshalb
-# bleiben die Originalvariablen plus zentrale abgeleitete Merkmale erhalten.
+# This RDS is the hand-off dataset for Daily and Outro, so the original
+# variables plus central derived features are retained.
 
 saveRDS(screening, output_rds)
 
 
 #===============================================================================
-# 10 Excel: eine Datei, fünf übersichtliche Blätter
+# 10 Excel: one file, five compact sheets
 #===============================================================================
-# Die Excel-Datei fasst nur interpretierbare Ergebnisse zusammen; reine
-# technische Zwischenobjekte werden nicht exportiert.
+# The Excel file summarizes only interpretable results; purely technical
+# intermediate objects are not exported.
 
 workbook <- openxlsx::createWorkbook()
 header_style <- openxlsx::createStyle(
@@ -731,18 +739,93 @@ add_excel_sheet(workbook, "Exploratory", exploratory_output, header_style)
 
 openxlsx::saveWorkbook(workbook, output_excel, overwrite = overwrite_outputs)
 
+# Publication-ready tables (.docx) for the manuscript, APA-style. Excel remains
+# the working format; these are the clean, interpretable core tables.
+n_screening <- nrow(screening)
+
+# Sub-rows of "n (%)" for a categorical variable, indented under a header row.
+pct_rows <- function(var) {
+  screening %>%
+    filter(!is.na(.data[[var]])) %>%
+    count(Level = .data[[var]], .drop = FALSE) %>%
+    transmute(
+      Characteristic = paste0("   ", as.character(Level)),
+      Value = paste0(n, " (", fmt_num(100 * n / n_screening, 1), ")")
+    )
+}
+
+screening_table1 <- bind_rows(
+  tibble(Characteristic = "Age in years, M (SD)",
+         Value = m_sd(age_stats$Mean, age_stats$SD)),
+  tibble(Characteristic = "Usage intensity (1-7), M (SD)",
+         Value = m_sd(usage_stats$Mean, usage_stats$SD)),
+  tibble(Characteristic = "Platforms used weekly (0-4), M (SD)",
+         Value = m_sd(safe_mean(screening$N_Platforms_Weekly),
+                      safe_sd(screening$N_Platforms_Weekly))),
+  tibble(Characteristic = "Gender, n (%)", Value = ""),
+  pct_rows("gender"),
+  tibble(Characteristic = "Education, n (%)", Value = ""),
+  pct_rows("education_three_level"),
+  tibble(Characteristic = "Typical spatial context, n (%)", Value = ""),
+  pct_rows("context_local"),
+  tibble(Characteristic = "Typical social context, n (%)", Value = ""),
+  pct_rows("context_social")
+)
+
+save_pub_table(
+  screening_table1,
+  file.path(tables_folder, "Tab_Screening_Sample.docx"),
+  table_number = 1,
+  title = "Sample characteristics (screening survey)",
+  note = paste0("N = ", n_screening,
+                ". M (SD) for continuous measures; n (%) for categorical measures.")
+)
+
+save_pub_table(
+  need_descriptives %>% transmute(
+    `Information need` = Information_Need,
+    `M (SD)` = m_sd(Mean, SD),
+    `95% CI` = fmt_ci(CI95_Lower, CI95_Upper)
+  ),
+  file.path(tables_folder, "Tab_Screening_Information_Needs.docx"),
+  table_number = 2,
+  title = "Information needs (importance ratings)",
+  note = "Importance rated on a 5-point scale from 1 (not at all important) to 5 (very important)."
+)
+
+save_pub_table(
+  tibble(
+    Scale = "Incidental exposure",
+    k = length(incidentality_items),
+    `M (SD)` = m_sd(incidentality_stats$Mean, incidentality_stats$SD),
+    `95% CI` = fmt_ci(incidentality_stats$CI95_Lower, incidentality_stats$CI95_Upper),
+    `Cronbach's alpha` = fmt_num(reliability_summary$Cronbach_Alpha, 2),
+    `Omega total` = fmt_num(reliability_summary$Omega_Total, 2),
+    `Omega hierarchical` = fmt_num(reliability_summary$Omega_Hierarchical, 2)
+  ),
+  file.path(tables_folder, "Tab_Screening_Incidental_Exposure.docx"),
+  table_number = 3,
+  title = "Incidental exposure index: descriptives and reliability",
+  note = paste0(
+    "Six-item scale (Ahmadi & Wohn, 2018); item 5 reverse-coded. ",
+    "The preregistration specified hierarchical omega; because the scale is ",
+    "modeled unidimensionally, omega total is the more appropriate estimate and ",
+    "the basis for the single-item-exclusion rule (deviation documented)."
+  )
+)
+
 
 #===============================================================================
 # 11 Figures
 #===============================================================================
-# Vier zentrale Grafiken mit demselben Projekttheme. Die Visualisierung soll
-# vor allem schnell lesbar sein: klare Typohierarchie, direkte Wertebeschriftung
-# und eine zurückhaltende gemeinsame Farbpalette aus 00_Helpers.R.
+# Four core figures using the shared project theme. The goal is quick
+# readability: clear typographic hierarchy, direct value labels and the shared
+# muted palette from 00_Helpers.R.
 
 if (create_figures) {
   
-  # Plattformnutzung: absolute Häufigkeiten bleiben die Hauptinformation;
-  # Prozentwerte stehen nur ergänzend direkt am Balken.
+  # Platform use: absolute counts are the main information; percentages appear
+  # only as supplementary labels on the bars.
   figure_platforms <- platform_weekly %>%
     mutate(
       Label = paste0(N_Weekly, "  (", round(Percent_Weekly, 1), " %)")
@@ -766,9 +849,9 @@ if (create_figures) {
       expand = expansion(mult = c(0, 0.22))
     ) +
     labs(
-      title = "Mindestens wöchentliche Plattformnutzung",
-      subtitle = paste0("Absolute Häufigkeiten; N = ", nrow(screening)),
-      x = "Personen",
+      title = "At least weekly platform use",
+      subtitle = paste0("Absolute counts; N = ", nrow(screening)),
+      x = "Participants",
       y = NULL
     ) +
     theme_project(base_size = 12, legend_position = "none") +
@@ -783,8 +866,8 @@ if (create_figures) {
     height = 4.6
   )
   
-  # Informationsbedürfnisse: Punkt + Konfidenzintervall betont Unterschiede,
-  # ohne die ordinalen 1–5-Skalen als exakte metrische Balken zu inszenieren.
+  # Information needs: point + confidence interval emphasizes differences without
+  # staging the ordinal 1–5 scales as exact metric bars.
   figure_needs <- need_descriptives %>%
     mutate(
       Label = sprintf("%.2f", Mean),
@@ -823,9 +906,9 @@ if (create_figures) {
       expand = expansion(mult = c(0.01, 0.02))
     ) +
     labs(
-      title = "Informationsbedürfnisse",
-      subtitle = "Mittelwerte und 95%-Konfidenzintervalle",
-      x = "Mittelwert (1–5)",
+      title = "Information needs",
+      subtitle = "Means and 95% confidence intervals",
+      x = "Mean (1–5)",
       y = NULL
     ) +
     theme_project(base_size = 12, legend_position = "none") +
@@ -840,8 +923,8 @@ if (create_figures) {
     height = 4.7
   )
   
-  # Incidentality: Verteilung plus Mittelwert als Orientierung. Die gestrichelte
-  # Linie ist deskriptiv und kein Schwellenwert.
+  # Incidental exposure: distribution plus mean for orientation. The dashed line
+  # is descriptive, not a threshold.
   incidentality_mean <- safe_mean(screening$incidentality_index)
   
   figure_incidentality <- screening %>%
@@ -877,10 +960,10 @@ if (create_figures) {
       expand = expansion(mult = c(0, 0))
     ) +
     labs(
-      title = "Screening-Incidentalität",
-      subtitle = "Verteilung des sechs Items umfassenden Index",
-      x = "Incidentality-Index (1–5)",
-      y = "Personen"
+      title = "Incidental exposure (screening)",
+      subtitle = "Distribution of the six-item index",
+      x = "Incidental exposure index (1–5)",
+      y = "Participants"
     ) +
     theme_project(base_size = 12, legend_position = "none") +
     theme(
@@ -894,12 +977,12 @@ if (create_figures) {
     height = 4.7
   )
   
-  # Explorative Korrelationen: Richtung wird farblich getrennt, die Effektgröße
-  # steht direkt am Balken. Signifikanz wird bewusst nicht visuell überhöht.
+  # Exploratory correlations: direction is colour-coded and the effect size is
+  # labelled directly on the bar. Significance is deliberately not emphasized.
   figure_exploratory <- incidentality_correlations %>%
     filter(!is.na(Spearman_Rho)) %>%
     mutate(
-      Direction = if_else(Spearman_Rho >= 0, "Positiv", "Negativ"),
+      Direction = if_else(Spearman_Rho >= 0, "Positive", "Negative"),
       Label = sprintf("%.2f", Spearman_Rho)
     ) %>%
     ggplot(aes(
@@ -924,8 +1007,8 @@ if (create_figures) {
     ) +
     scale_fill_manual(
       values = c(
-        "Positiv" = unname(project_colors["primary"]),
-        "Negativ" = unname(project_colors["accent"])
+        "Positive" = unname(project_colors["primary"]),
+        "Negative" = unname(project_colors["accent"])
       )
     ) +
     scale_x_continuous(
@@ -934,9 +1017,9 @@ if (create_figures) {
       expand = expansion(mult = c(0.03, 0.03))
     ) +
     labs(
-      title = "Explorative Zusammenhänge mit Incidentality",
-      subtitle = "Spearman-Korrelationen; rohe und BH-adjustierte p-Werte im Excel-Output",
-      x = "Spearman ρ",
+      title = "Exploratory associations with incidental exposure",
+      subtitle = "Spearman correlations; raw and BH-adjusted p-values in the Excel output",
+      x = "Spearman rho",
       y = NULL,
       fill = NULL
     ) +
@@ -957,7 +1040,7 @@ if (create_figures) {
 #===============================================================================
 # 12 Console report
 #===============================================================================
-# Kurzer Abschlusscheck für den laufenden Workflow.
+# Short closing check for the running workflow.
 
 cat(
   "\nSCREENING ANALYSIS COMPLETED\n",

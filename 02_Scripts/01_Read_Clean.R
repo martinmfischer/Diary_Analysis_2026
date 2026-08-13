@@ -16,6 +16,8 @@ rm(list = ls())
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load("readr", "tidyverse")
 
+source(file.path("02_Scripts", "00_Helpers.R"))
+
 
 # ==============================================================================
 # Paths
@@ -77,21 +79,28 @@ n_outro_empty <- sum(is.na(outro$firstOpened))
 diary <- diary %>% filter(!is.na(firstOpened))
 outro <- outro %>% filter(!is.na(firstOpened))
 
-message("Leere Diary-Einträge entfernt: ", n_diary_empty)
-message("Leere Outro-Einträge entfernt: ", n_outro_empty)
+message("Empty diary entries removed: ", n_diary_empty)
+message("Empty outro entries removed: ", n_outro_empty)
 
 
 ## Ausgeschlossene Teilnehmende bestimmen
-
-screening_eliminated <- screening %>%
-  filter(!intro_stop_age | !intro_stop_usage)
+## Stop-Items robust als logische Werte parsen (true/false, 1/0, ja/nein).
 
 screening <- screening %>%
-  filter(intro_stop_age & intro_stop_usage)
+  mutate(
+    eligible_age = as_logical_safe(intro_stop_age),
+    eligible_usage = as_logical_safe(intro_stop_usage)
+  )
+
+screening_eliminated <- screening %>%
+  filter(!(eligible_age %in% TRUE) | !(eligible_usage %in% TRUE))
+
+screening <- screening %>%
+  filter(eligible_age %in% TRUE, eligible_usage %in% TRUE)
 
 users_to_remove <- unique(screening_eliminated$personalParticipantCode)
 
-message("Ausgeschlossene TN: ", length(users_to_remove))
+message("Excluded participants: ", length(users_to_remove))
 
 
 ## Aus Diary und Outro entfernen
@@ -105,9 +114,9 @@ diary <- diary %>%
 outro <- outro %>%
   filter(!personalParticipantCode %in% users_to_remove)
 
-message("Entfernte Diary-Zeilen: ", n_diary_before - nrow(diary))
-message("Entfernte Outro-Zeilen: ", n_outro_before - nrow(outro))
-message("Verbleibende TN im Screening: ",
+message("Removed diary rows: ", n_diary_before - nrow(diary))
+message("Removed outro rows: ", n_outro_before - nrow(outro))
+message("Remaining participants in screening: ",
         n_distinct(screening$personalParticipantCode))
 
 # ==============================================================================
@@ -134,7 +143,7 @@ saveRDS(
   outro,
   file = file.path(
     data_dir,
-    "abschlussbefragung tagebuchstudie.rds"
+    "abschlussbefragung_tagebuchstudie.rds"
   )
 )
 
@@ -142,4 +151,4 @@ saveRDS(
 # Finished
 # ==============================================================================
 
-message("CSV-Dateien erfolgreich eingelesen und als RDS gespeichert.")
+message("CSV files successfully read and saved as RDS.")

@@ -33,6 +33,8 @@ pacman::p_load(
   tools
 )
 
+source(file.path("02_Scripts", "00_Helpers.R"))
+
 
 #===============================================================================
 # Paths
@@ -53,96 +55,34 @@ daily <- readRDS(data_file)
 
 
 #===============================================================================
-# Determine study day for every participant
+# Build the shared screenshot index and copy files
 #===============================================================================
 
-daily <- daily %>%
-  mutate(
-    scheduled_date = as.Date(scheduled)
-  ) %>%
-  arrange(personalParticipantCode, scheduled_date) %>%
-  group_by(personalParticipantCode) %>%
-  mutate(
-    study_day = dense_rank(scheduled_date)
-  ) %>%
-  ungroup()
-
-
-#===============================================================================
-# Create folder structure and copy screenshots
-#===============================================================================
+# Studientag, Foto-Nummer und Zieldateiname stammen aus derselben Funktion wie
+# im Coding-Sheet (03_Create_Coding_file.R). Dadurch stimmen die hier kopierten
+# Dateien und die im Coding-Sheet referenzierten Pfade per Konstruktion überein.
+index <- derive_screenshot_index(daily, participant_folder = target_folder)
 
 dir_create(target_folder)
 
-for (i in seq_len(nrow(daily))) {
-  
-  row <- daily[i, ]
-  
-  participant <- row$personalParticipantCode
-  day <- row$study_day
-  
-  # Prüfen, ob überhaupt Screenshots vorhanden sind
-  screenshot_columns <- paste0("daily_", 1:10, "_screenshot")
-  
-  screenshots <- unlist(row[screenshot_columns])
-  
-  screenshots <- screenshots[
-    !is.na(screenshots) &
-      screenshots != ""
-  ]
-  
-  # Keine Screenshots -> Datensatz überspringen
-  if (length(screenshots) == 0) {
+n_copied <- 0L
+n_missing <- 0L
+
+for (i in seq_len(nrow(index))) {
+  source_file <- path(source_folder, index$original_filename[i])
+  destination <- index$filepath[i]
+
+  if (!file_exists(source_file)) {
+    warning("Source file not found: ", source_file)
+    n_missing <- n_missing + 1L
     next
   }
-  
-  participant_folder <- path(target_folder, participant)
-  day_folder <- path(participant_folder, paste0("Tag_", day))
-  
-  dir_create(participant_folder)
-  dir_create(day_folder)
-  
-  # Einzelne Screenshots kopieren
-  for (photo in 1:10) {
-    
-    column_name <- paste0("daily_", photo, "_screenshot")
-    
-    filename <- row[[column_name]]
-    
-    if (is.na(filename) || filename == "") {
-      next
-    }
-    
-    source_file <- path(source_folder, filename)
-    
-    if (!file_exists(source_file)) {
-      warning("File not found: ", source_file)
-      next
-    }
-    
-    extension <- file_ext(filename)
-    
-    destination <- path(
-      day_folder,
-      paste0(
-        participant,
-        "_Tag_",
-        day,
-        "_Photo_",
-        photo,
-        ".",
-        extension
-      )
-    )
-    
-    file_copy(
-      path = source_file,
-      new_path = destination,
-      overwrite = TRUE
-    )
-    
-  }
-  
+
+  dir_create(path_dir(destination))
+  file_copy(source_file, destination, overwrite = TRUE)
+  n_copied <- n_copied + 1L
 }
 
+message("Copied screenshots: ", n_copied)
+message("Missing source files: ", n_missing)
 message("Finished copying screenshots.")
