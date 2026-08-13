@@ -16,6 +16,10 @@
 #     - Method_Associations wenige theoriegeleitete explorative Zusammenhänge
 #     - Open_Text           Freitext für qualitative Sichtung
 #   03_Output/outro_prepared.rds
+#   03_Output/Outro_Open_Text_Report.md
+#     - automatische, rein deskriptive Übersicht der Freitextantworten
+#     - Themenhäufigkeiten über ein transparentes Schlagwort-Dictionary
+#     - häufige Begriffe und illustrative Originalantworten
 #   04_Figures/Outro_*.png
 #
 # Notes:
@@ -40,6 +44,13 @@ omega_cutoff <- 0.70
 apply_single_item_exclusion <- TRUE
 create_figures <- TRUE
 
+# Freitext-Report: rein deskriptive Orientierung, kein Ersatz für qualitative
+# Codierung. Die Originalantworten bleiben unverändert erhalten.
+create_open_text_report <- TRUE
+open_text_report_include_appendix <- TRUE
+open_text_examples_per_theme <- 2
+open_text_top_terms <- 12
+
 helper_script <- file.path("02_Scripts", "00_Helpers.R")
 data_folder <- "01_Data"
 output_folder <- "03_Output"
@@ -58,6 +69,11 @@ output_excel <- file.path(
 output_rds <- file.path(
   output_folder,
   "outro_prepared.rds"
+)
+
+open_text_report_file <- file.path(
+  output_folder,
+  "Outro_Open_Text_Report.md"
 )
 
 
@@ -578,10 +594,19 @@ method_associations <- if (nrow(available_associations) > 0) {
 
 
 #===============================================================================
-# 12 Open text for qualitative inspection
+# 12 Open text: descriptive summary and readable report
 #===============================================================================
-# Freitexte werden nicht quantitativ überinterpretiert. Sie bleiben in einer
-# einzigen übersichtlichen Tabelle für die manuelle methodische Sichtung erhalten.
+# Die beiden Freitextfragen dienen primär der methodischen Einordnung der App und
+# der Studienteilnahme. Deshalb wird hier KEINE automatisierte qualitative
+# Inhaltsanalyse behauptet. Stattdessen erzeugt das Skript eine transparente,
+# reproduzierbare Orientierung:
+#   1. Antwortquote und Antwortlänge,
+#   2. heuristische Themenmarker über ein explizites Schlagwort-Dictionary,
+#   3. häufige Begriffe nach Entfernung deutscher Stoppwörter,
+#   4. illustrative Originalantworten,
+#   5. optional einen vollständigen Anhang aller Antworten.
+# Die Themenmarker dürfen später eine manuelle Sichtung strukturieren, ersetzen
+# aber keine induktive/deduktive qualitative Codierung.
 
 open_text <- outro_analysis %>%
   select(participant, problems_free, suggestions_free) %>%
@@ -596,9 +621,452 @@ open_text <- outro_analysis %>%
       Question,
       problems_free = "Probleme / Unsicherheiten",
       suggestions_free = "Verbesserungsvorschläge"
-    )
+    ),
+    Response = str_squish(Response),
+    Word_Count = str_count(Response, "\\S+")
   ) %>%
+  filter(Response != "") %>%
   arrange(Question, participant)
+
+open_text_question_levels <- c(
+  "Probleme / Unsicherheiten",
+  "Verbesserungsvorschläge"
+)
+
+# Transparente, methodisch relevante Themenmarker. Mehrfachzuordnungen sind
+# ausdrücklich erlaubt: Eine Antwort kann z.B. gleichzeitig Upload- und
+# Navigationsprobleme ansprechen.
+open_text_theme_dictionary <- tribble(
+  ~Scope, ~Theme, ~Pattern,
+  "Probleme / Unsicherheiten",
+  "Keine Probleme / Unsicherheiten",
+  "^\\s*(nein|nö|keine?( probleme?| schwierigkeiten?| unsicherheiten?)?|nichts|alles (gut|okay|ok)|problemlos|hat (gut|alles) funktioniert)[.! ]*$",
+  "Verbesserungsvorschläge",
+  "Keine Verbesserungsvorschläge",
+  "^\\s*(nein|nö|keine?( vorschläge?| anmerkungen?| verbesserungen?)?|nichts|alles (gut|okay|ok)|so (ist|passt) es gut)[.! ]*$",
+  "Beide",
+  "Installation / Login / Code",
+  "install|download|login|log-in|einlog|anmeld|registr|teilnehmer.?code|login.?code|code eing",
+  "Beide",
+  "Upload / Screenshot / Medienauswahl",
+  "upload|hochlad|screenshot|screen.?shot|foto|bild|aufnahme|galerie|kamera|datei ausw",
+  "Beide",
+  "Navigation / Bedienung",
+  "navig|orientier|bedien|menü|menu|button|schaltfläche|zurück|weiter|seite wechsel|finde? nicht|gefunden",
+  "Beide",
+  "Technische Stabilität / Verbindung",
+  "absturz|abgestürzt|häng|fehler|bug|funktioniert? nicht|ging nicht|laden|lädt|verbind|internet|netz|sync|synchron",
+  "Beide",
+  "Erinnerungen / Zeitpunkt",
+  "erinner|benachr|notification|push|uhrzeit|zeitpunkt|morgens|abends|früh|spät",
+  "Beide",
+  "Verständlichkeit / Aufgabenstellung",
+  "unklar|unverständlich|verständlich|unsicher|frage|formulierung|definition|öffentlich.? relevant|relevan.*inhalt|was.*hochlad|welche.*beitr",
+  "Beide",
+  "Lesbarkeit / visuelles Design",
+  "schrift|lesbar|schriftgröße|größe der schrift|design|layout|farbe|kontrast|darstellung|optik",
+  "Beide",
+  "Aufwand / Länge / Schritte",
+  "aufwand|zeitaufw|mühsam|umständ|zu lang|lange gedauert|viele schritte|weniger schritte|dauer",
+  "Beide",
+  "Datenschutz / Privatsphäre",
+  "datenschutz|privat|privacy|persönliche daten|personenbezogen|sicherheit|zugriff.*daten",
+  "Beide",
+  "Gerät / Plattform / Kompatibilität",
+  "iphone|ipad|ios|android|smartphone|tablet|motorola|facebook|instagram|tiktok|twitter|\\bx\\b|plattform",
+  "Beide",
+  "Positive Nutzungserfahrung",
+  "benutzerfreund|übersichtlich|intuitiv|einfach|problemlos|gut funktioniert|zufrieden|unkompliziert"
+)
+
+# Jede Antwort wird gegen alle für ihre Frage passenden Marker geprüft.
+open_text_themes <- if (nrow(open_text) > 0) {
+  tidyr::crossing(
+    open_text,
+    open_text_theme_dictionary
+  ) %>%
+    filter(Scope == "Beide" | Scope == Question) %>%
+    filter(
+      str_detect(
+        Response,
+        regex(Pattern, ignore_case = TRUE)
+      )
+    ) %>%
+    distinct(Question, participant, Response, Word_Count, Theme)
+} else {
+  tibble(
+    Question = character(),
+    participant = character(),
+    Response = character(),
+    Word_Count = integer(),
+    Theme = character()
+  )
+}
+
+# Fragebezogene Basiszahlen; zusätzlich wird sichtbar, wie viele Antworten durch
+# das Dictionary überhaupt angesprochen wurden. Eine hohe Nichtzuordnungsquote ist
+# ein Signal für manuelle Sichtung, nicht für "sonstige" Inhalte.
+open_text_tagged <- open_text_themes %>%
+  distinct(Question, participant)
+
+open_text_question_summary <- tibble(
+  Question = open_text_question_levels
+) %>%
+  left_join(
+    open_text %>%
+      group_by(Question) %>%
+      summarise(
+        N_Responses = n(),
+        N_Participants = n_distinct(participant),
+        Median_Words = median(Word_Count),
+        Mean_Words = mean(Word_Count),
+        .groups = "drop"
+      ),
+    by = "Question"
+  ) %>%
+  left_join(
+    open_text_tagged %>%
+      count(Question, name = "N_Tagged"),
+    by = "Question"
+  ) %>%
+  mutate(
+    across(c(N_Responses, N_Participants, N_Tagged), ~ replace_na(.x, 0L)),
+    Response_Rate = 100 * N_Responses / nrow(outro_analysis),
+    N_Untagged = N_Responses - N_Tagged,
+    Percent_Untagged = if_else(
+      N_Responses > 0,
+      100 * N_Untagged / N_Responses,
+      NA_real_
+    ),
+    Mean_Words = round(Mean_Words, 1),
+    Response_Rate = round(Response_Rate, 1),
+    Percent_Untagged = round(Percent_Untagged, 1)
+  )
+
+open_text_theme_summary <- open_text_themes %>%
+  count(Question, Theme, name = "N_Responses") %>%
+  left_join(
+    open_text_question_summary %>%
+      select(Question, N_Question_Responses = N_Responses),
+    by = "Question"
+  ) %>%
+  mutate(
+    Percent_of_Question_Responses = if_else(
+      N_Question_Responses > 0,
+      100 * N_Responses / N_Question_Responses,
+      NA_real_
+    ),
+    Percent_of_Question_Responses = round(Percent_of_Question_Responses, 1)
+  ) %>%
+  arrange(Question, desc(N_Responses), Theme)
+
+# Häufige Begriffe werden deskriptiv über die Zahl der Personen gezählt, die den
+# Begriff mindestens einmal verwenden. Das verhindert, dass Wiederholungen in
+# einer langen Einzelantwort das Ranking dominieren.
+german_stopwords <- if (requireNamespace("stopwords", quietly = TRUE)) {
+  stopwords::stopwords("de")
+} else {
+  c(
+    "aber", "alle", "als", "also", "am", "an", "auch", "auf", "aus",
+    "bei", "bin", "bis", "da", "das", "dass", "dem", "den", "der", "des",
+    "die", "dies", "diese", "dieser", "doch", "ein", "eine", "einem",
+    "einen", "einer", "es", "für", "hat", "habe", "haben", "hier", "ich",
+    "im", "in", "ist", "ja", "kann", "kein", "keine", "mit", "mir", "nicht",
+    "noch", "nur", "oder", "sehr", "sich", "sie", "sind", "so", "und", "von",
+    "war", "was", "wie", "wir", "wurde", "zu", "zum", "zur"
+  )
+}
+
+open_text_custom_stopwords <- c(
+  "app", "studie", "gesis", "smart", "teilnahme", "tage", "tag", "fragebogen"
+)
+
+open_text_terms <- if (nrow(open_text) > 0) {
+  open_text %>%
+    transmute(
+      Question,
+      participant,
+      Token = str_extract_all(
+        str_to_lower(Response),
+        "[a-zäöüß]{3,}"
+      )
+    ) %>%
+    unnest(Token) %>%
+    filter(
+      !Token %in% german_stopwords,
+      !Token %in% open_text_custom_stopwords
+    ) %>%
+    group_by(Question, Token) %>%
+    summarise(
+      Participants = n_distinct(participant),
+      Occurrences = n(),
+      .groups = "drop"
+    ) %>%
+    group_by(Question) %>%
+    arrange(desc(Participants), desc(Occurrences), Token) %>%
+    slice_head(n = open_text_top_terms) %>%
+    ungroup()
+} else {
+  tibble(
+    Question = character(),
+    Token = character(),
+    Participants = integer(),
+    Occurrences = integer()
+  )
+}
+
+# Für illustrative Beispiele werden keine "besten" oder besonders eindrucksvollen
+# Antworten ausgesucht. Stattdessen nehmen wir Antworten nahe der medianen Länge
+# innerhalb eines Themes; das ist reproduzierbar und reduziert Cherry-Picking.
+open_text_theme_examples <- open_text_themes %>%
+  group_by(Question, Theme) %>%
+  mutate(
+    Theme_Median_Words = median(Word_Count),
+    Distance_to_Median = abs(Word_Count - Theme_Median_Words)
+  ) %>%
+  arrange(Distance_to_Median, participant) %>%
+  slice_head(n = open_text_examples_per_theme) %>%
+  ungroup()
+
+# Nicht automatisch erfasste Antworten werden separat markiert. Sie sind für die
+# manuelle Prüfung besonders interessant, weil das Dictionary dort offensichtlich
+# nicht ausreicht.
+open_text_unmatched <- open_text %>%
+  anti_join(
+    open_text_tagged,
+    by = c("Question", "participant")
+  )
+
+#-------------------------------------------------------------------------------
+# 12a Markdown report
+#-------------------------------------------------------------------------------
+# Markdown ist absichtlich gewählt: robust, ohne Word-/Pandoc-Abhängigkeit,
+# versionskontrollierbar und in RStudio/VS Code/GitHub direkt gut lesbar.
+
+md_escape <- function(x) {
+  x <- ifelse(is.na(x), "", as.character(x))
+  x <- str_replace_all(x, "\\|", "\\\\|")
+  x <- str_replace_all(x, "[\\r\\n]+", " ")
+  str_squish(x)
+}
+
+md_table <- function(data) {
+  if (nrow(data) == 0) return("_Keine Daten._")
+  
+  x <- as.data.frame(
+    lapply(data, md_escape),
+    stringsAsFactors = FALSE
+  )
+  
+  c(
+    paste0("| ", paste(names(x), collapse = " | "), " |"),
+    paste0("| ", paste(rep("---", ncol(x)), collapse = " | "), " |"),
+    apply(
+      x,
+      1,
+      function(row) paste0("| ", paste(row, collapse = " | "), " |")
+    )
+  )
+}
+
+make_theme_sentence <- function(question) {
+  top <- open_text_theme_summary %>%
+    filter(Question == question) %>%
+    slice_head(n = 3)
+  
+  if (nrow(top) == 0) {
+    return("Für diese Frage wurden keine Antworten durch die heuristischen Themenmarker erfasst.")
+  }
+  
+  pieces <- paste0(
+    top$Theme,
+    " (n = ", top$N_Responses,
+    "; ", top$Percent_of_Question_Responses, " %)"
+  )
+  
+  paste0(
+    "Die am häufigsten markierten Themen waren ",
+    paste(pieces, collapse = "; "),
+    "."
+  )
+}
+
+if (create_open_text_report) {
+  report_overview <- open_text_question_summary %>%
+    transmute(
+      Frage = Question,
+      Antworten = N_Responses,
+      `Antwortquote (%)` = Response_Rate,
+      `Median Wörter` = Median_Words,
+      `Nicht automatisch zugeordnet` = N_Untagged
+    )
+  
+  report_lines <- c(
+    "# Freitextübersicht – Abschlussbefragung",
+    "",
+    paste0("*Automatisch erzeugt am ", Sys.Date(), ".*"),
+    "",
+    paste0("Analysestichprobe: **N = ", nrow(outro_analysis), "** Teilnehmende."),
+    "",
+    "> **Einordnung:** Dieser Report ist eine deskriptive Orientierungshilfe. ",
+    "> Die Themenzuordnung basiert auf einem transparenten Schlagwort-Dictionary, ",
+    "> erlaubt Mehrfachzuordnungen und ist **keine qualitative Inhaltsanalyse**. ",
+    "> Für publikationsrelevante Aussagen sollten die Originalantworten zusätzlich ",
+    "> manuell gesichtet bzw. systematisch codiert werden.",
+    "",
+    "## Überblick",
+    "",
+    md_table(report_overview),
+    ""
+  )
+  
+  for (question in open_text_question_levels) {
+    q_summary <- open_text_question_summary %>%
+      filter(Question == question)
+    
+    q_themes <- open_text_theme_summary %>%
+      filter(Question == question) %>%
+      transmute(
+        Thema = Theme,
+        N = N_Responses,
+        `Anteil der Antworten (%)` = Percent_of_Question_Responses
+      )
+    
+    q_terms <- open_text_terms %>%
+      filter(Question == question) %>%
+      transmute(
+        Begriff = Token,
+        `Teilnehmende mit Begriff` = Participants,
+        `Vorkommen gesamt` = Occurrences
+      )
+    
+    report_lines <- c(
+      report_lines,
+      paste0("## ", question),
+      "",
+      if (nrow(q_summary) > 0) {
+        paste0(
+          "**", q_summary$N_Responses, " Antworten** (",
+          q_summary$Response_Rate, " % der Analysestichprobe); ",
+          "Median = ", q_summary$Median_Words, " Wörter."
+        )
+      } else {
+        "Keine Antworten."
+      },
+      "",
+      make_theme_sentence(question),
+      "",
+      "### Heuristisch markierte Themen",
+      "",
+      md_table(q_themes),
+      "",
+      "### Häufige Begriffe",
+      "",
+      "Gezählt wird primär, wie viele unterschiedliche Teilnehmende einen Begriff verwenden.",
+      "",
+      md_table(q_terms),
+      ""
+    )
+    
+    top_themes <- open_text_theme_summary %>%
+      filter(Question == question) %>%
+      slice_head(n = 6) %>%
+      pull(Theme)
+    
+    if (length(top_themes) > 0) {
+      report_lines <- c(
+        report_lines,
+        "### Illustrative Antworten zu häufigen Themen",
+        "",
+        "Die Beispiele wurden reproduzierbar nach Nähe zur medianen Antwortlänge des jeweiligen Themes ausgewählt; sie sind nicht als repräsentative Zitate zu verstehen.",
+        ""
+      )
+      
+      for (theme in top_themes) {
+        examples <- open_text_theme_examples %>%
+          filter(Question == question, Theme == theme)
+        
+        theme_n <- open_text_theme_summary %>%
+          filter(Question == question, Theme == theme) %>%
+          pull(N_Responses)
+        
+        report_lines <- c(
+          report_lines,
+          paste0("#### ", theme, " (n = ", theme_n, ")"),
+          ""
+        )
+        
+        for (i in seq_len(nrow(examples))) {
+          report_lines <- c(
+            report_lines,
+            paste0(
+              "> **", md_escape(examples$participant[[i]]), ":** ",
+              md_escape(examples$Response[[i]])
+            ),
+            ""
+          )
+        }
+      }
+    }
+    
+    q_unmatched <- open_text_unmatched %>%
+      filter(Question == question)
+    
+    report_lines <- c(
+      report_lines,
+      "### Automatisch nicht zugeordnete Antworten",
+      "",
+      paste0(
+        "**n = ", nrow(q_unmatched), "**. Diese Antworten sollten bei einer ",
+        "manuellen Sichtung besonders beachtet werden, weil das Dictionary sie ",
+        "nicht abdeckt."
+      ),
+      ""
+    )
+  }
+  
+  if (open_text_report_include_appendix && nrow(open_text) > 0) {
+    report_lines <- c(
+      report_lines,
+      "# Anhang: vollständige Freitextantworten",
+      "",
+      "Die folgenden Antworten werden unverändert inhaltlich wiedergegeben; nur überflüssige Leerzeichen und Zeilenumbrüche wurden vereinheitlicht.",
+      ""
+    )
+    
+    for (question in open_text_question_levels) {
+      q_raw <- open_text %>%
+        filter(Question == question)
+      
+      report_lines <- c(
+        report_lines,
+        paste0("## ", question),
+        ""
+      )
+      
+      if (nrow(q_raw) == 0) {
+        report_lines <- c(report_lines, "_Keine Antworten._", "")
+      } else {
+        for (i in seq_len(nrow(q_raw))) {
+          report_lines <- c(
+            report_lines,
+            paste0(
+              "- **", md_escape(q_raw$participant[[i]]), "** — ",
+              md_escape(q_raw$Response[[i]])
+            )
+          )
+        }
+        report_lines <- c(report_lines, "")
+      }
+    }
+  }
+  
+  writeLines(
+    report_lines,
+    con = open_text_report_file,
+    useBytes = TRUE
+  )
+}
 
 
 #===============================================================================
@@ -633,9 +1101,17 @@ header_style <- openxlsx::createStyle(
 add_excel_sheet(workbook, "Scales", scale_table, header_style)
 add_excel_sheet(workbook, "Items", item_table, header_style)
 add_excel_sheet(workbook, "Method_Associations", method_associations, header_style)
+add_excel_sheet(workbook, "Open_Text_Summary", open_text_theme_summary, header_style)
 add_excel_sheet(workbook, "Open_Text", open_text, header_style)
 
 # Lange Itemtexte und Freitexte bekommen feste Breiten und Zeilenumbruch.
+openxlsx::setColWidths(
+  workbook,
+  "Open_Text_Summary",
+  cols = which(names(open_text_theme_summary) %in% c("Question", "Theme")),
+  widths = c(28, 42)
+)
+
 openxlsx::setColWidths(
   workbook,
   "Items",
@@ -888,9 +1364,22 @@ cat(
 
 cat("Open-text responses – problems: ", sum(!is.na(outro_analysis$problems_free)), "\n", sep = "")
 cat("Open-text responses – suggestions: ", sum(!is.na(outro_analysis$suggestions_free)), "\n", sep = "")
+cat("Open-text responses not captured by theme dictionary: ", nrow(open_text_unmatched), "\n", sep = "")
+
+if (nrow(open_text_theme_summary) > 0) {
+  cat("\nMost frequent open-text themes (heuristic):\n")
+  open_text_theme_summary %>%
+    group_by(Question) %>%
+    slice_head(n = 5) %>%
+    ungroup() %>%
+    select(Question, Theme, N_Responses, Percent_of_Question_Responses) %>%
+    print(n = Inf)
+}
+
 cat("Exploratory method associations: ", nrow(method_associations), "\n\n", sep = "")
 
 cat("Excel: ", output_excel, "\n", sep = "")
 cat("Prepared RDS: ", output_rds, "\n", sep = "")
+if (create_open_text_report) cat("Open-text report: ", open_text_report_file, "\n", sep = "")
 if (create_figures) cat("Figures: ", figure_folder, "/Outro_*.png\n", sep = "")
 cat("============================================================\n")
