@@ -116,8 +116,30 @@ outro <- outro %>%
 
 message("Removed diary rows: ", n_diary_before - nrow(diary))
 message("Removed outro rows: ", n_outro_before - nrow(outro))
+
+
+
+# ==============================================================================
+# Remove incomplete outro participants
+# ==============================================================================
+
+nrow_outro_before <- nrow(outro)
+outro <- outro %>% filter(!is.na(committed))
+nrow_outro_after <- nrow(outro)
+
+outro_users <- outro$personalParticipantCode
+
+screening <- screening %>% filter(personalParticipantCode %in% outro_users)
+diary <- diary %>% filter(personalParticipantCode %in% outro_users)
+
+message("Removed another ", nrow_outro_before - nrow_outro_after, " users that did not finish the outro survey")
 message("Remaining participants in screening: ",
+        n_distinct(diary$personalParticipantCode))
+message("Remaining participants in daily: ",
         n_distinct(screening$personalParticipantCode))
+message("Remaining participants in outro: ",
+        n_distinct(outro$personalParticipantCode))
+message("Number of diary entries: ", nrow(diary))
 
 # ==============================================================================
 # Save as RDS

@@ -1,7 +1,6 @@
 ################################################################################
 # Project: Tagebuchstudie – öffentlich relevante Informationsnutzung
 # File:    04b_Daily_Analysis.R
-# Simulation: optional via 02_Scripts/03_Simulate_Daily_Coding.R
 # Purpose: Kompakte Hauptanalyse der 7-Tage-Diary-Daten.
 #
 # Inputs:
@@ -18,8 +17,10 @@
 #   - Einschluss: Screening-Match + mindestens 7 hochgeladene Screenshots.
 #   - public_rel_coded = 1: inhaltlich analysieren.
 #   - public_rel_coded = 0: nicht öffentlich relevant; keine Inhaltscodierung.
-#   - public_rel_coded = -1: nicht beurteilbar; aus Relevanzquote/Inhaltsanalyse raus.
-#   - Hauptanalysen beschreiben Thema, Quelle, Format, Plattform, Incidentality,
+#   - public_rel_coded = 99/98/97: Residualcodes; aus Relevanzquote und
+#     Inhaltsanalyse ausgeschlossen.
+#   - advertisement_coded wird für alle vollständig codierten Beiträge ausgewertet.
+#   - Hauptanalysen beschreiben Werbung, Thema, Quelle, Format, Plattform, Incidentality,
 #     Nutzungskontext und Verarbeitung.
 #   - Explorationen fokussieren Screening–Diary-Bezüge, Informationsbedürfnisse,
 #     Neuheit/Serendipität, Plattformunterschiede und mögliche Tageseffekte.
@@ -42,13 +43,6 @@ overwrite_outputs <- TRUE
 expected_study_days <- 1:7
 coding_sheet_name <- "Coding"
 
-# Optional pipeline test: Das eigentliche Simulationsverfahren liegt bewusst in
-# einem separaten Source-Modul. Reale Coding-Werte werden standardmäßig erhalten.
-simulate_coding <- TRUE
-simulation_seed <- 20260810
-simulation_overwrite_existing <- FALSE
-simulation_use_screening_patterns <- TRUE
-
 
 #===============================================================================
 # 02 Packages, helpers and paths
@@ -58,32 +52,23 @@ if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(tidyverse, openxlsx, fs)
 
 helper_script <- file.path("02_Scripts", "00_Helpers.R")
-simulation_script <- file.path("02_Scripts", "03_Simulate_Daily_Coding.R")
 coding_file <- file.path("06_Coding", "coding_sheet.xlsx")
 screening_file <- file.path("03_Output", "screening_prepared.rds")
 output_folder <- "03_Output"
+figure_folder <- "04_Figures"
 
-# Simulation (falls aktiv) fuellt das Coding nur im Speicher und schreibt in die
-# regulaeren Output-Pfade. Bei simulate_coding = TRUE enthalten die Ergebnisse
-# folglich Testdaten; fuer die reale Auswertung simulate_coding = FALSE setzen.
 output_excel <- file.path(output_folder, "Daily_Results.xlsx")
 output_screenshot_rds <- file.path(output_folder, "daily_screenshot_level.rds")
 output_participant_rds <- file.path(output_folder, "daily_participant_level.rds")
-figure_folder <- "04_Figures"
-tables_folder <- file.path(output_folder, "Tables")
 
 if (!file.exists(helper_script)) stop("Helper-Script nicht gefunden: ", helper_script)
 source(helper_script)
 
-if (simulate_coding && !file.exists(simulation_script)) {
-  stop("Simulationsmodul nicht gefunden: ", simulation_script)
-}
 if (!file.exists(coding_file)) stop("Coding Sheet nicht gefunden: ", coding_file)
 if (!file.exists(screening_file)) stop("Screening-RDS nicht gefunden: ", screening_file)
 
 fs::dir_create(output_folder)
 fs::dir_create(figure_folder)
-fs::dir_create(tables_folder)
 
 if (!overwrite_outputs && any(file.exists(c(
   output_excel, output_screenshot_rds, output_participant_rds
@@ -96,53 +81,74 @@ if (!overwrite_outputs && any(file.exists(c(
 # 03 Category systems
 #===============================================================================
 
-# Die Listen entsprechen dem Coding-Schema und dienen zugleich der Validierung.
-topic_levels <- c(
-  "Politics, government & elections",
-  "International affairs, war & security",
-  "Economy, labor, finance & consumers",
-  "Society, social affairs, migration & religion",
-  "Education, science & technology",
-  "Health & care",
-  "Climate, environment & energy",
-  "Crime & justice",
-  "Transport, infrastructure & housing",
-  "Weather & natural events",
-  "Culture, media & entertainment",
-  "History & remembrance",
-  "Sports",
-  "Events & public service",
-  "Other / not clear"
+# Die Codes entsprechen dem aktuellen Coding-Schema. Topic 15 (Hobby) wurde
+# gestrichen. Topic/Source werden im Coding-Sheet numerisch gespeichert und hier
+# für Analyse und Output in lesbare Labels übersetzt.
+public_rel_labels <- c(
+  `1`  = "Öffentlich relevant",
+  `0`  = "Nicht öffentlich relevant",
+  `99` = "Unklar",
+  `98` = "Kein Einzelbeitrag sozialer Medien",
+  `97` = "Technisch fehlerhaft / unlesbar"
 )
 
-source_levels <- c(
-  "Journalistic media outlet",
-  "Alternative or partisan media outlet",
-  "Party or politician",
-  "State or public institution",
-  "NGO, association, or movement",
-  "Science, expert, or fact-check",
-  "Company or brand",
-  "Journalist, creator, influencer, or public figure",
-  "Private person / peer",
-  "Collective, meme, satire, or aggregator page",
-  "Other / source not identifiable"
+advertisement_labels <- c(
+  `1`  = "Werbung oder Anzeige",
+  `2`  = "Keine Werbung oder Anzeige",
+  `99` = "Sonstiges / nicht eindeutig"
 )
+
+topic_labels <- c(
+  `1`  = "Politik, Staat & Wahlen",
+  `2`  = "Internationales, Krieg & Sicherheit",
+  `3`  = "Wirtschaft, Arbeit, Finanzen & Verbraucher",
+  `4`  = "Gesellschaft, Soziales, Migration & Religion",
+  `5`  = "Bildung, Wissenschaft & Technologie",
+  `6`  = "Gesundheit & Pflege",
+  `7`  = "Klima, Umwelt & Energie",
+  `8`  = "Kriminalität & Justiz",
+  `9`  = "Verkehr, Infrastruktur & Wohnen",
+  `10` = "Wetter & Naturereignisse",
+  `11` = "Kultur, Medien & Unterhaltung",
+  `12` = "Geschichte & Erinnerung",
+  `13` = "Sport",
+  `14` = "Veranstaltungen & öffentlicher Service",
+  `99` = "Sonstiges / nicht eindeutig"
+)
+
+topic_levels <- unname(topic_labels)
+
+source_labels <- c(
+  `1`  = "Journalistisches Medium",
+  `2`  = "Alternatives oder parteiisches Medienangebot",
+  `3`  = "Partei oder Politiker:in",
+  `4`  = "Staatliche oder öffentliche Institution",
+  `5`  = "NGO, Verband, Verein, Initiative oder Bewegung",
+  `6`  = "Wissenschaft, Expert:in oder Faktencheck",
+  `7`  = "Unternehmen oder Marke",
+  `8`  = "Journalist:in",
+  `9`  = "Creator:in, Influencer:in oder sonstige Person der Öffentlichkeit",
+  `10` = "Private Person",
+  `11` = "Kollektiv, Meme-, Satire- oder Aggregator-Seite",
+  `99` = "Sonstige / Account nicht erkennbar"
+)
+
+source_levels <- unname(source_labels)
 
 platform_levels <- c("Facebook", "Instagram", "TikTok", "X")
 
 format_labels <- c(
-  `1` = "Text/link-based",
-  `2` = "Static visual format",
-  `3` = "Moving audiovisual format",
-  `4` = "Mixed media format",
-  `-1` = "Not determinable"
+  `1`  = "Text-/linkbasiert",
+  `2`  = "Statisches visuelles Format",
+  `3`  = "Bewegtes audiovisuelles Format",
+  `4`  = "Gemischtes Format",
+  `99` = "Nicht bestimmbar"
 )
 
 incidentality_levels <- c(
-  "Searched deliberately",
-  "Followed, not deliberately sought",
-  "Encountered by chance"
+  "Gezielt gesucht",
+  "Gefolgt, nicht gezielt gesucht",
+  "Zufällig begegnet"
 )
 
 
@@ -169,7 +175,7 @@ screening <- rename_first_available(
 
 required_coding <- c(
   "participant", "screenshot_id", "study_day", "filename", "file_exists",
-  "public_rel_coded", "topic_coded", "source_coded", "source_name_coded",
+  "public_rel_coded", "advertisement_coded", "topic_coded", "source_coded", "source_name_coded",
   "platform_coded", "media_format", "coding_completed", "platform_reported",
   "incidentality_code", "interaction_read_code", "interaction_research_code",
   "interaction_engagement_code", "locality_code", "situation_code"
@@ -216,34 +222,13 @@ screening_selected <- screening %>%
   )
 
 
-#-------------------------------------------------------------------------------
-# Optional simulation
-#-------------------------------------------------------------------------------
-
-# Für Pipeline-Tests füllt das separate Modul ausschließlich die manuellen
-# Coding-Spalten. Die realen Diary-Angaben zu Incidentality, Kontext und
-# Interaktionen bleiben unverändert. Das Coding Sheet auf der Festplatte wird
-# nicht überschrieben; simuliert wird nur das in-memory Objekt `coding`.
-if (simulate_coding) {
-  # Das Modul arbeitet direkt auf dem bereits geladenen Objekt `coding` und darf
-  # deshalb erst an dieser Stelle ausgeführt werden. `local = environment()` hält
-  # alle simulierten Objekte im Environment dieses Analyse-Skripts.
-  source(simulation_script, local = environment())
-  
-  # Harte Rückmeldung, falls versehentlich ein falsches/älteres Modul eingebunden
-  # wurde. Das aktuelle Modul setzt diese Kennzeichnung nach erfolgreichem Lauf.
-  if (!"coding_was_simulated" %in% names(coding)) {
-    stop("Simulationsmodul wurde gesourct, hat `coding` aber nicht simuliert.")
-  }
-}
-
-
 #===============================================================================
 # 05 Prepare coding data
 #===============================================================================
 
-# Die technischen Codes aus dem Coding Sheet werden direkt genutzt. Das macht
-# die Aufbereitung deutlich eindeutiger als eine nachträgliche Text-Erkennung.
+# Die manuellen Codes werden numerisch eingelesen und anschließend gelabelt.
+# Rohcodes bleiben als *_code erhalten, damit Validierung und Residualkategorien
+# eindeutig bleiben.
 coding <- coding %>%
   mutate(
     participant = clean_text(participant),
@@ -251,12 +236,29 @@ coding <- coding %>%
     filename = clean_text(filename),
     study_day = parse_study_day(study_day),
     public_rel_coded = as.integer(clean_numeric(public_rel_coded)),
-    topic_coded = clean_text(topic_coded),
-    source_coded = clean_text(source_coded),
+    advertisement_code = as.integer(clean_numeric(advertisement_coded)),
+    topic_code = as.integer(clean_numeric(topic_coded)),
+    source_code = as.integer(clean_numeric(source_coded)),
     source_name_coded = clean_text(source_name_coded),
     platform_reported = clean_text(platform_reported),
     platform_coded = coalesce(clean_text(platform_coded), platform_reported),
     media_format_code = as.integer(clean_numeric(media_format)),
+    public_rel_status = factor(
+      unname(public_rel_labels[as.character(public_rel_coded)]),
+      levels = unname(public_rel_labels[c("1", "0", "99", "98", "97")])
+    ),
+    advertisement = factor(
+      unname(advertisement_labels[as.character(advertisement_code)]),
+      levels = unname(advertisement_labels[c("1", "2", "99")])
+    ),
+    topic_coded = factor(
+      unname(topic_labels[as.character(topic_code)]),
+      levels = topic_levels
+    ),
+    source_coded = factor(
+      unname(source_labels[as.character(source_code)]),
+      levels = source_levels
+    ),
     media_format_display = unname(format_labels[as.character(media_format_code)]),
     media_format = factor(
       if_else(media_format_code %in% 1:4, media_format_display, NA_character_),
@@ -264,24 +266,24 @@ coding <- coding %>%
     ),
     incidentality_code = clean_numeric(incidentality_code),
     incidentality = case_when(
-      incidentality_code == 1 ~ "Searched deliberately",
-      incidentality_code == 2 ~ "Followed, not deliberately sought",
-      incidentality_code == 3 ~ "Encountered by chance",
+      incidentality_code == 1 ~ "Gezielt gesucht",
+      incidentality_code == 2 ~ "Gefolgt, nicht gezielt gesucht",
+      incidentality_code == 3 ~ "Zufällig begegnet",
       TRUE ~ NA_character_
     ),
     interaction_read = clean_binary(interaction_read_code),
     interaction_research = clean_binary(interaction_research_code),
     interaction_engagement = clean_binary(interaction_engagement_code),
     locality = case_when(
-      clean_numeric(locality_code) == 1 ~ "At home",
-      clean_numeric(locality_code) == 2 ~ "Out and about",
-      clean_numeric(locality_code) == 3 ~ "Don't know",
+      clean_numeric(locality_code) == 1 ~ "Zu Hause",
+      clean_numeric(locality_code) == 2 ~ "Unterwegs",
+      clean_numeric(locality_code) == 3 ~ "Weiß nicht mehr",
       TRUE ~ NA_character_
     ),
     situation = case_when(
-      clean_numeric(situation_code) == 1 ~ "Alone",
-      clean_numeric(situation_code) == 2 ~ "With someone else",
-      clean_numeric(situation_code) == 3 ~ "Don't know",
+      clean_numeric(situation_code) == 1 ~ "Allein",
+      clean_numeric(situation_code) == 2 ~ "Gemeinsam mit jemandem",
+      clean_numeric(situation_code) == 3 ~ "Weiß nicht mehr",
       TRUE ~ NA_character_
     ),
     coding_completed_binary = as_logical_safe(coding_completed),
@@ -304,22 +306,32 @@ coding <- coding %>%
 missing_ids <- sum(is.na(coding$participant) | is.na(coding$screenshot_id))
 duplicate_ids <- sum(duplicated(coding$screenshot_id[!is.na(coding$screenshot_id)]))
 invalid_public <- sum(
-  is.na(coding$public_rel_coded) | !coding$public_rel_coded %in% c(-1L, 0L, 1L)
+  is.na(coding$public_rel_coded) |
+    !coding$public_rel_coded %in% c(0L, 1L, 97L, 98L, 99L)
+)
+invalid_advertisement <- sum(
+  is.na(coding$advertisement_code) |
+    !coding$advertisement_code %in% c(1L, 2L, 99L)
 )
 invalid_platform <- sum(is.na(coding$platform))
 invalid_topic <- sum(
   coding$public_rel_coded == 1L &
-    (is.na(coding$topic_coded) | !coding$topic_coded %in% topic_levels),
+    (is.na(coding$topic_code) | !coding$topic_code %in% c(1:14, 99L)),
   na.rm = TRUE
 )
 invalid_source <- sum(
   coding$public_rel_coded == 1L &
-    (is.na(coding$source_coded) | !coding$source_coded %in% source_levels),
+    (is.na(coding$source_code) | !coding$source_code %in% c(1:11, 99L)),
   na.rm = TRUE
 )
 invalid_format <- sum(
   coding$public_rel_coded == 1L &
-    (is.na(coding$media_format_code) | !coding$media_format_code %in% c(-1L, 1:4)),
+    (is.na(coding$media_format_code) | !coding$media_format_code %in% c(1:4, 99L)),
+  na.rm = TRUE
+)
+content_gate_violations <- sum(
+  coding$public_rel_coded != 1L &
+    (!is.na(coding$topic_code) | !is.na(coding$source_code) | !is.na(coding$media_format_code)),
   na.rm = TRUE
 )
 incomplete_rows <- sum(
@@ -330,15 +342,17 @@ if (missing_ids > 0) stop("Coding Sheet enthält Zeilen ohne Participant-/Screen
 if (duplicate_ids > 0) stop("Coding Sheet enthält doppelte screenshot_id-Werte.")
 
 if (strict_coding_check && any(c(
-  invalid_public, invalid_platform, invalid_topic, invalid_source,
-  invalid_format, incomplete_rows
+  invalid_public, invalid_advertisement, invalid_platform, invalid_topic,
+  invalid_source, invalid_format, content_gate_violations, incomplete_rows
 ) > 0)) {
   stop(
     "Coding unvollständig/ungültig: public_rel=", invalid_public,
+    ", advertisement=", invalid_advertisement,
     ", platform=", invalid_platform,
     ", topic=", invalid_topic,
     ", source=", invalid_source,
     ", format=", invalid_format,
+    ", gate violations=", content_gate_violations,
     ", nicht abgeschlossen=", incomplete_rows, "."
   )
 }
@@ -398,17 +412,17 @@ daily_all <- coding %>%
   mutate(
     incidental_strict = case_when(
       is.na(incidentality) ~ NA_integer_,
-      incidentality == "Encountered by chance" ~ 1L,
+      incidentality == "Zufällig begegnet" ~ 1L,
       TRUE ~ 0L
     ),
     incidental_broad = case_when(
       is.na(incidentality) ~ NA_integer_,
-      incidentality %in% c("Followed, not deliberately sought", "Encountered by chance") ~ 1L,
+      incidentality %in% c("Gefolgt, nicht gezielt gesucht", "Zufällig begegnet") ~ 1L,
       TRUE ~ 0L
     ),
     targeted_exposure = case_when(
       is.na(incidentality) ~ NA_integer_,
-      incidentality == "Searched deliberately" ~ 1L,
+      incidentality == "Gezielt gesucht" ~ 1L,
       TRUE ~ 0L
     ),
     interaction_count = if_else(
@@ -438,31 +452,29 @@ daily_all <- coding %>%
 daily <- daily_all %>%
   filter(public_relevance == 1L, coding_completed_binary %in% TRUE) %>%
   mutate(
-    topic_coded = factor(topic_coded, levels = topic_levels),
-    source_coded = factor(source_coded, levels = source_levels),
     topic_macro = case_when(
       as.character(topic_coded) %in% topic_levels[c(1, 2, 3, 4, 7, 8)] ~
-        "Current affairs & public issues",
+        "Aktuelles & öffentliche Angelegenheiten",
       as.character(topic_coded) %in% topic_levels[c(6, 9, 10, 14)] ~
-        "Practical information & service",
+        "Praktische Information & Service",
       as.character(topic_coded) %in% topic_levels[c(5, 11, 12, 13)] ~
-        "Knowledge, interests & culture",
-      TRUE ~ "Other / not clear"
+        "Wissen, Interessen & Kultur",
+      TRUE ~ "Sonstiges / nicht eindeutig"
     ),
     source_macro = case_when(
-      as.character(source_coded) == source_levels[1] ~ "Journalistic media",
-      as.character(source_coded) %in% source_levels[c(2, 10)] ~ "Alternative/aggregated media",
-      as.character(source_coded) %in% source_levels[c(3, 4)] ~ "Politics & public institutions",
-      as.character(source_coded) %in% source_levels[c(5, 6)] ~ "Civil society & expertise",
-      as.character(source_coded) %in% source_levels[c(7, 8)] ~ "Commercial/public-figure accounts",
-      as.character(source_coded) == source_levels[9] ~ "Private person / peer",
-      TRUE ~ "Other / not identifiable"
+      as.character(source_coded) == source_levels[1] ~ "Journalistische Medien",
+      as.character(source_coded) %in% source_levels[c(2, 11)] ~ "Alternative/aggregierte Medien",
+      as.character(source_coded) %in% source_levels[c(3, 4)] ~ "Politik & öffentliche Institutionen",
+      as.character(source_coded) %in% source_levels[c(5, 6)] ~ "Zivilgesellschaft & Expertise",
+      as.character(source_coded) %in% source_levels[c(7, 8, 9)] ~ "Kommerzielle/öffentliche Personenaccounts",
+      as.character(source_coded) == source_levels[10] ~ "Private Person / Peer",
+      TRUE ~ "Sonstige / nicht erkennbar"
     ),
     need_domain = case_when(
-      source_macro == "Private person / peer" ~ "Social information need",
-      topic_macro == "Current affairs & public issues" ~ "Undirected information need",
-      topic_macro == "Practical information & service" ~ "Problem-related information need",
-      topic_macro == "Knowledge, interests & culture" ~ "Thematic information need",
+      source_macro == "Private Person / Peer" ~ "Soziales Informationsbedürfnis",
+      topic_macro == "Aktuelles & öffentliche Angelegenheiten" ~ "Ungerichtetes Informationsbedürfnis",
+      topic_macro == "Praktische Information & Service" ~ "Problembezogenes Informationsbedürfnis",
+      topic_macro == "Wissen, Interessen & Kultur" ~ "Thematisches Informationsbedürfnis",
       TRUE ~ NA_character_
     ),
     post_need_fit_z = case_when(
@@ -536,32 +548,48 @@ participant_counts <- daily_all %>%
     N_Active_Days = n_distinct(study_day[!is.na(study_day)]),
     N_Public_Relevant = sum(public_relevance == 1L, na.rm = TRUE),
     N_Not_Public_Relevant = sum(public_relevance == 0L, na.rm = TRUE),
-    N_Not_Assessable = sum(public_rel_coded == -1L, na.rm = TRUE),
+    N_Public_Unclear = sum(public_rel_coded == 99L, na.rm = TRUE),
+    N_No_Single_Post = sum(public_rel_coded == 98L, na.rm = TRUE),
+    N_Technical_Error = sum(public_rel_coded == 97L, na.rm = TRUE),
+    N_Public_Residual = sum(public_rel_coded %in% c(97L, 98L, 99L), na.rm = TRUE),
+    N_Advertisement = sum(advertisement_code == 1L, na.rm = TRUE),
+    N_No_Advertisement = sum(advertisement_code == 2L, na.rm = TRUE),
+    N_Advertisement_Unclear = sum(advertisement_code == 99L, na.rm = TRUE),
     Share_Publicly_Relevant = safe_divide(
       N_Public_Relevant,
       N_Public_Relevant + N_Not_Public_Relevant
+    ),
+    Share_Advertisement = safe_divide(
+      N_Advertisement,
+      N_Advertisement + N_No_Advertisement
     ),
     .groups = "drop"
   )
 
 sample_overview <- bind_rows(
-  tibble(Section = "Sample", Metric = "Coding screenshots total", Value = nrow(coding), Note = NA_character_),
-  tibble(Section = "Sample", Metric = "Coding participants total", Value = n_distinct(coding$participant), Note = NA_character_),
-  tibble(Section = "Sample", Metric = "Included participants", Value = length(eligible_ids), Note = paste0(">= ", minimum_screenshots, " screenshots")),
-  tibble(Section = "Sample", Metric = "Screenshots in analysis sample", Value = nrow(daily_all), Note = NA_character_),
-  tibble(Section = "Public relevance", Metric = "Publicly relevant", Value = sum(daily_all$public_relevance == 1L, na.rm = TRUE), Note = NA_character_),
-  tibble(Section = "Public relevance", Metric = "Not publicly relevant", Value = sum(daily_all$public_relevance == 0L, na.rm = TRUE), Note = NA_character_),
-  tibble(Section = "Public relevance", Metric = "Not assessable (-1)", Value = sum(daily_all$public_rel_coded == -1L, na.rm = TRUE), Note = "Not in the denominator of the relevance rate"),
-  tibble(Section = "Coding/QC", Metric = "Missing files", Value = missing_files, Note = NA_character_),
-  tibble(Section = "Coding/QC", Metric = "Study day outside 1-7", Value = study_day_issues, Note = NA_character_),
-  tibble(Section = "Coding/QC", Metric = "Platform corrections", Value = platform_mismatches, Note = "reported != coded")
+  tibble(Section = "Sample", Metric = "Coding-Screenshots gesamt", Value = nrow(coding), Note = NA_character_),
+  tibble(Section = "Sample", Metric = "Coding-Teilnehmende gesamt", Value = n_distinct(coding$participant), Note = NA_character_),
+  tibble(Section = "Sample", Metric = "Eingeschlossene Teilnehmende", Value = length(eligible_ids), Note = paste0("≥ ", minimum_screenshots, " Screenshots")),
+  tibble(Section = "Sample", Metric = "Screenshots im Analysesample", Value = nrow(daily_all), Note = NA_character_),
+  tibble(Section = "Public relevance", Metric = "Öffentlich relevant", Value = sum(daily_all$public_relevance == 1L, na.rm = TRUE), Note = NA_character_),
+  tibble(Section = "Public relevance", Metric = "Nicht öffentlich relevant", Value = sum(daily_all$public_relevance == 0L, na.rm = TRUE), Note = NA_character_),
+  tibble(Section = "Public relevance", Metric = "Unklar (99)", Value = sum(daily_all$public_rel_coded == 99L, na.rm = TRUE), Note = "Nicht im Nenner der Relevanzquote"),
+  tibble(Section = "Public relevance", Metric = "Kein Einzelbeitrag sozialer Medien (98)", Value = sum(daily_all$public_rel_coded == 98L, na.rm = TRUE), Note = "Nicht im Nenner der Relevanzquote"),
+  tibble(Section = "Public relevance", Metric = "Technisch fehlerhaft / unlesbar (97)", Value = sum(daily_all$public_rel_coded == 97L, na.rm = TRUE), Note = "Nicht im Nenner der Relevanzquote"),
+  tibble(Section = "Advertisement", Metric = "Werbung oder Anzeige", Value = sum(daily_all$advertisement_code == 1L, na.rm = TRUE), Note = NA_character_),
+  tibble(Section = "Advertisement", Metric = "Keine Werbung oder Anzeige", Value = sum(daily_all$advertisement_code == 2L, na.rm = TRUE), Note = NA_character_),
+  tibble(Section = "Advertisement", Metric = "Sonstiges / nicht eindeutig (99)", Value = sum(daily_all$advertisement_code == 99L, na.rm = TRUE), Note = NA_character_),
+  tibble(Section = "Advertisement", Metric = "Werbeanteil unter eindeutig codierten Beiträgen (%)", Value = 100 * safe_divide(sum(daily_all$advertisement_code == 1L, na.rm = TRUE), sum(daily_all$advertisement_code %in% c(1L, 2L), na.rm = TRUE)), Note = "Code 99 nicht im Nenner"),
+  tibble(Section = "Coding/QC", Metric = "Fehlende Dateien", Value = missing_files, Note = NA_character_),
+  tibble(Section = "Coding/QC", Metric = "Studientag außerhalb 1–7", Value = study_day_issues, Note = NA_character_),
+  tibble(Section = "Coding/QC", Metric = "Plattformkorrekturen", Value = platform_mismatches, Note = "reported ≠ coded")
 ) %>%
   bind_rows(
     exclusion_summary %>%
       transmute(Section = "Sample", Metric = paste0("Status: ", Reason), Value = N, Note = NA_character_)
   )
 
-# Day effects are descriptive and mainly serve as a reactivity / trajectory check.
+# Tageseffekte sind deskriptiv und dienen vor allem als Reaktivitäts-/Verlaufscheck.
 participant_day_grid <- tidyr::expand_grid(
   participant = eligible_ids,
   study_day = expected_study_days
@@ -615,29 +643,39 @@ day_summary <- participant_day %>%
 # 10 Main distributions
 #===============================================================================
 
-# Screenshot-Gewichtung beschreibt den hochgeladenen Informationsstrom;
-# Teilnehmergewichtung verhindert, dass Viel-Uploader die Verteilung dominieren.
+# Public relevance und Advertisement beziehen sich auf alle vollständig codierten
+# Beiträge im Analysesample. Inhaltliche Dimensionen beziehen sich ausschließlich
+# auf öffentlich relevante Beiträge.
+status_distribution_data <- daily_all %>%
+  filter(coding_completed_binary %in% TRUE) %>%
+  mutate(
+    public_rel_value = as.character(public_rel_status),
+    advertisement_value = as.character(advertisement)
+  )
+
 daily_distribution_data <- daily %>%
   mutate(
     topic_value = as.character(topic_coded),
     source_value = as.character(source_coded),
     platform_value = as.character(platform),
-    format_value = if_else(media_format_code == -1L, "Not determinable", as.character(media_format)),
+    format_value = if_else(media_format_code == 99L, "Nicht bestimmbar", as.character(media_format)),
     incidentality_value = as.character(incidentality),
     locality_value = locality,
     situation_value = situation
   )
 
-screenshot_distributions <- bind_rows(
-  frequency_distribution(daily_distribution_data, "topic_value", "Topic", topic_levels),
-  frequency_distribution(daily_distribution_data, "source_value", "Source", source_levels),
-  frequency_distribution(daily_distribution_data, "platform_value", "Platform", platform_levels),
-  frequency_distribution(daily_distribution_data, "format_value", "Format", c(unname(format_labels[c("1", "2", "3", "4")]), "Not determinable")),
-  frequency_distribution(daily_distribution_data, "incidentality_value", "Incidental exposure", incidentality_levels),
-  frequency_distribution(daily_distribution_data, "locality_value", "Spatial context", c("At home", "Out and about", "Don't know")),
-  frequency_distribution(daily_distribution_data, "situation_value", "Social context", c("Alone", "With someone else", "Don't know"))
+status_screenshot_distributions <- bind_rows(
+  frequency_distribution(
+    status_distribution_data, "public_rel_value", "Öffentliche Relevanz",
+    unname(public_rel_labels[c("1", "0", "99", "98", "97")])
+  ),
+  frequency_distribution(
+    status_distribution_data, "advertisement_value", "Advertisement",
+    unname(advertisement_labels[c("1", "2", "99")])
+  )
 ) %>%
   transmute(
+    Scope = "Alle vollständig codierten Beiträge",
     Weighting = "Screenshot",
     Variable, Category,
     N_Units = N,
@@ -646,14 +684,42 @@ screenshot_distributions <- bind_rows(
     SD_Percent = NA_real_
   )
 
-participant_share_tables <- bind_rows(
-  summarise_participant_shares(make_participant_shares(daily_distribution_data, "topic_value", topic_levels, "Topic")),
-  summarise_participant_shares(make_participant_shares(daily_distribution_data, "source_value", source_levels, "Source")),
-  summarise_participant_shares(make_participant_shares(daily_distribution_data, "platform_value", platform_levels, "Platform")),
-  summarise_participant_shares(make_participant_shares(daily_distribution_data %>% mutate(format_analysis = as.character(media_format)), "format_analysis", unname(format_labels[c("1", "2", "3", "4")]), "Format")),
-  summarise_participant_shares(make_participant_shares(daily_distribution_data, "incidentality_value", incidentality_levels, "Incidental exposure"))
+content_screenshot_distributions <- bind_rows(
+  frequency_distribution(daily_distribution_data, "topic_value", "Thema", topic_levels),
+  frequency_distribution(daily_distribution_data, "source_value", "Quelle", source_levels),
+  frequency_distribution(daily_distribution_data, "platform_value", "Plattform", platform_levels),
+  frequency_distribution(
+    daily_distribution_data, "format_value", "Format",
+    unname(format_labels[c("1", "2", "3", "4", "99")])
+  ),
+  frequency_distribution(daily_distribution_data, "incidentality_value", "Incidentality", incidentality_levels),
+  frequency_distribution(daily_distribution_data, "locality_value", "Räumlicher Kontext", c("Zu Hause", "Unterwegs", "Weiß nicht mehr")),
+  frequency_distribution(daily_distribution_data, "situation_value", "Sozialer Kontext", c("Allein", "Gemeinsam mit jemandem", "Weiß nicht mehr"))
 ) %>%
   transmute(
+    Scope = "Öffentlich relevante Beiträge",
+    Weighting = "Screenshot",
+    Variable, Category,
+    N_Units = N,
+    N_Valid,
+    Percent = Percent_Valid,
+    SD_Percent = NA_real_
+  )
+
+status_participant_shares <- bind_rows(
+  summarise_participant_shares(make_participant_shares(
+    status_distribution_data, "public_rel_value",
+    unname(public_rel_labels[c("1", "0", "99", "98", "97")]),
+    "Öffentliche Relevanz"
+  )),
+  summarise_participant_shares(make_participant_shares(
+    status_distribution_data, "advertisement_value",
+    unname(advertisement_labels[c("1", "2", "99")]),
+    "Advertisement"
+  ))
+) %>%
+  transmute(
+    Scope = "Alle vollständig codierten Beiträge",
     Weighting = "Participant",
     Variable, Category,
     N_Units = N_Participants,
@@ -662,7 +728,32 @@ participant_share_tables <- bind_rows(
     SD_Percent = 100 * SD_Share
   )
 
-main_distributions <- bind_rows(screenshot_distributions, participant_share_tables)
+content_participant_shares <- bind_rows(
+  summarise_participant_shares(make_participant_shares(daily_distribution_data, "topic_value", topic_levels, "Thema")),
+  summarise_participant_shares(make_participant_shares(daily_distribution_data, "source_value", source_levels, "Quelle")),
+  summarise_participant_shares(make_participant_shares(daily_distribution_data, "platform_value", platform_levels, "Plattform")),
+  summarise_participant_shares(make_participant_shares(
+    daily_distribution_data, "format_value",
+    unname(format_labels[c("1", "2", "3", "4", "99")]), "Format"
+  )),
+  summarise_participant_shares(make_participant_shares(daily_distribution_data, "incidentality_value", incidentality_levels, "Incidentality"))
+) %>%
+  transmute(
+    Scope = "Öffentlich relevante Beiträge",
+    Weighting = "Participant",
+    Variable, Category,
+    N_Units = N_Participants,
+    N_Valid = N_Participants,
+    Percent = Mean_Percent,
+    SD_Percent = 100 * SD_Share
+  )
+
+main_distributions <- bind_rows(
+  status_screenshot_distributions,
+  content_screenshot_distributions,
+  status_participant_shares,
+  content_participant_shares
+)
 
 
 #===============================================================================
@@ -682,10 +773,10 @@ participant_content_metrics <- daily %>%
     Share_Researched = safe_mean(interaction_research),
     Share_Engaged = safe_mean(interaction_engagement),
     Share_Any_Interaction = safe_mean(interaction_any),
-    Share_Home = share_value(locality, "At home"),
-    Share_Away = share_value(locality, "Out and about"),
-    Share_Alone = share_value(situation, "Alone"),
-    Share_Together = share_value(situation, "With someone else"),
+    Share_Home = share_value(locality, "Zu Hause"),
+    Share_Away = share_value(locality, "Unterwegs"),
+    Share_Alone = share_value(situation, "Allein"),
+    Share_Together = share_value(situation, "Gemeinsam mit jemandem"),
     Topic_Richness = n_distinct_valid(topic_coded),
     Topic_Shannon = shannon_entropy(topic_coded),
     Source_Richness = n_distinct_valid(source_coded),
@@ -695,16 +786,16 @@ participant_content_metrics <- daily %>%
     Format_Richness = n_distinct_valid(media_format),
     Format_Shannon = shannon_entropy(media_format),
     N_Unique_Account_Names = n_distinct_valid(source_name_coded),
-    Share_Current_Affairs = share_value(topic_macro, "Current affairs & public issues"),
-    Share_Practical_Service = share_value(topic_macro, "Practical information & service"),
-    Share_Knowledge_Interests = share_value(topic_macro, "Knowledge, interests & culture"),
-    Share_Journalistic_Sources = share_value(source_macro, "Journalistic media"),
-    Share_Peer_Sources = share_value(source_macro, "Private person / peer"),
+    Share_Current_Affairs = share_value(topic_macro, "Aktuelles & öffentliche Angelegenheiten"),
+    Share_Practical_Service = share_value(topic_macro, "Praktische Information & Service"),
+    Share_Knowledge_Interests = share_value(topic_macro, "Wissen, Interessen & Kultur"),
+    Share_Journalistic_Sources = share_value(source_macro, "Journalistische Medien"),
+    Share_Peer_Sources = share_value(source_macro, "Private Person / Peer"),
     Share_Facebook = share_value(as.character(platform), "Facebook"),
     Share_Instagram = share_value(as.character(platform), "Instagram"),
     Share_TikTok = share_value(as.character(platform), "TikTok"),
     Share_X = share_value(as.character(platform), "X"),
-    Share_Video = share_value(as.character(media_format), "Moving audiovisual format"),
+    Share_Video = share_value(as.character(media_format), "Bewegtes audiovisuelles Format"),
     Share_Topic_Novelty = safe_mean(topic_novelty),
     Share_Account_Novelty = safe_mean(account_novelty),
     Share_Productive_Serendipity_Strict = safe_mean(productive_serendipity_strict),
@@ -743,16 +834,16 @@ participant_metrics <- participant_metrics %>%
       }
     }),
     Local_Context_Alignment = case_when(
-      clean_text(context_local) == "At home" ~ Share_Home,
-      clean_text(context_local) == "Out and about" ~ Share_Away,
-      str_detect(str_to_lower(clean_text(context_local)), "equally|both") ~
+      clean_text(context_local) == "Zu Hause" ~ Share_Home,
+      clean_text(context_local) == "Unterwegs" ~ Share_Away,
+      str_detect(str_to_lower(clean_text(context_local)), "beiden|ähnlich|gleich") ~
         1 - abs(Share_Home - Share_Away),
       TRUE ~ NA_real_
     ),
     Social_Context_Alignment = case_when(
-      str_detect(str_to_lower(clean_text(context_social)), "mostly alone") ~ Share_Alone,
-      str_detect(str_to_lower(clean_text(context_social)), "mostly with others") ~ Share_Together,
-      str_detect(str_to_lower(clean_text(context_social)), "equally") ~
+      str_detect(str_to_lower(clean_text(context_social)), "überwiegend allein|mostly alone") ~ Share_Alone,
+      str_detect(str_to_lower(clean_text(context_social)), "überwiegend gemeinsam|mostly together") ~ Share_Together,
+      str_detect(str_to_lower(clean_text(context_social)), "ähnlich|gleich") ~
         1 - abs(Share_Alone - Share_Together),
       TRUE ~ NA_real_
     ),
@@ -808,16 +899,16 @@ participant_metrics <- participant_metrics %>%
 # Diese Kreuztabellen beantworten, ob Themen/Quellen/Formate auf den Plattformen
 # unterschiedlich verteilt sind. Es sind rein deskriptive, kompositionale Muster.
 cross_tabs <- bind_rows(
-  cross_tabulation(daily, "topic_coded", "platform", "Topic", "Platform") %>%
-    mutate(Analysis = "Topic x Platform", .before = 1),
-  cross_tabulation(daily, "source_coded", "platform", "Source", "Platform") %>%
-    mutate(Analysis = "Source x Platform", .before = 1),
-  cross_tabulation(daily, "media_format", "platform", "Format", "Platform") %>%
-    mutate(Analysis = "Format x Platform", .before = 1),
-  cross_tabulation(daily, "topic_macro", "incidentality", "Topic family", "Incidental exposure") %>%
-    mutate(Analysis = "Topic family x Incidental exposure", .before = 1),
-  cross_tabulation(daily, "source_macro", "incidentality", "Source family", "Incidental exposure") %>%
-    mutate(Analysis = "Source family x Incidental exposure", .before = 1)
+  cross_tabulation(daily, "topic_coded", "platform", "Thema", "Plattform") %>%
+    mutate(Analysis = "Thema × Plattform", .before = 1),
+  cross_tabulation(daily, "source_coded", "platform", "Quelle", "Plattform") %>%
+    mutate(Analysis = "Quelle × Plattform", .before = 1),
+  cross_tabulation(daily, "media_format", "platform", "Format", "Plattform") %>%
+    mutate(Analysis = "Format × Plattform", .before = 1),
+  cross_tabulation(daily, "topic_macro", "incidentality", "Themenfamilie", "Incidentality") %>%
+    mutate(Analysis = "Themenfamilie × Incidentality", .before = 1),
+  cross_tabulation(daily, "source_macro", "incidentality", "Quellenfamilie", "Incidentality") %>%
+    mutate(Analysis = "Quellenfamilie × Incidentality", .before = 1)
 )
 
 
@@ -828,31 +919,31 @@ cross_tabs <- bind_rows(
 # Der Block prüft, was mit gefundenen Beiträgen passiert. Incidentality wird als
 # Auffindungsweg verstanden; Neuheit bezieht sich nur auf das beobachtete Diary.
 processing_overall <- daily %>%
-  mutate(Overall = "All publicly relevant posts") %>%
+  mutate(Overall = "Alle öffentlich relevanten Beiträge") %>%
   { bind_rows(
-    binary_group_summary(., "Overall", "interaction_read", "Total", "Read/watched thoroughly"),
-    binary_group_summary(., "Overall", "interaction_research", "Total", "Sought further information"),
-    binary_group_summary(., "Overall", "interaction_engagement", "Total", "Visibly engaged"),
-    binary_group_summary(., "Overall", "interaction_any", "Total", "At least one form of processing")
+    binary_group_summary(., "Overall", "interaction_read", "Gesamt", "Gründlich gelesen/angeschaut"),
+    binary_group_summary(., "Overall", "interaction_research", "Gesamt", "Weiter recherchiert"),
+    binary_group_summary(., "Overall", "interaction_engagement", "Gesamt", "Sichtbar interagiert"),
+    binary_group_summary(., "Overall", "interaction_any", "Gesamt", "Mindestens eine Verarbeitung")
   ) }
 
 processing_incidentality <- bind_rows(
-  binary_group_summary(daily, "incidentality", "interaction_read", "Incidental exposure", "Read/watched thoroughly"),
-  binary_group_summary(daily, "incidentality", "interaction_research", "Incidental exposure", "Sought further information"),
-  binary_group_summary(daily, "incidentality", "interaction_engagement", "Incidental exposure", "Visibly engaged")
+  binary_group_summary(daily, "incidentality", "interaction_read", "Incidentality", "Gründlich gelesen/angeschaut"),
+  binary_group_summary(daily, "incidentality", "interaction_research", "Incidentality", "Weiter recherchiert"),
+  binary_group_summary(daily, "incidentality", "interaction_engagement", "Incidentality", "Sichtbar interagiert")
 )
 
 novelty_incidentality <- bind_rows(
-  binary_group_summary(daily, "incidentality", "topic_novelty", "Incidental exposure", "New topic in diary"),
-  binary_group_summary(daily, "incidentality", "account_novelty", "Incidental exposure", "New account in diary"),
-  binary_group_summary(daily, "incidentality", "productive_serendipity_strict", "Incidental exposure", "Productive serendipity, strict"),
-  binary_group_summary(daily, "incidentality", "productive_serendipity_broad", "Incidental exposure", "Productive serendipity, broad")
+  binary_group_summary(daily, "incidentality", "topic_novelty", "Incidentality", "Neues Thema im Diary"),
+  binary_group_summary(daily, "incidentality", "account_novelty", "Incidentality", "Neuer Account im Diary"),
+  binary_group_summary(daily, "incidentality", "productive_serendipity_strict", "Incidentality", "Produktive Serendipität, strikt"),
+  binary_group_summary(daily, "incidentality", "productive_serendipity_broad", "Incidentality", "Produktive Serendipität, breit")
 )
 
 processing_novelty <- bind_rows(
-  processing_overall %>% mutate(Analysis = "Processing overall", .before = 1),
-  processing_incidentality %>% mutate(Analysis = "Processing by incidental exposure", .before = 1),
-  novelty_incidentality %>% mutate(Analysis = "Novelty/serendipity by incidental exposure", .before = 1)
+  processing_overall %>% mutate(Analysis = "Verarbeitung gesamt", .before = 1),
+  processing_incidentality %>% mutate(Analysis = "Verarbeitung nach Incidentality", .before = 1),
+  novelty_incidentality %>% mutate(Analysis = "Neuheit/Serendipität nach Incidentality", .before = 1)
 )
 
 
@@ -864,22 +955,22 @@ processing_novelty <- bind_rows(
 # Beziehungen geprüft. Alle Tests sind explorativ; BH wird je Familie korrigiert.
 correlation_specs <- tribble(
   ~Family, ~X, ~Y, ~X_Label, ~Y_Label,
-  "Calibration", "incidentality_index", "Share_Incidental_Broad", "Screening incidental exposure", "Diary incidental (broad)",
-  "Calibration", "incidentality_index", "Share_Incidental_Strict", "Screening incidental exposure", "Diary incidental (strict)",
-  "Information needs", "intro_ib_undirected", "Share_Current_Affairs", "Undirected need", "Share current/public affairs",
-  "Information needs", "intro_ib_thematic", "Share_Knowledge_Interests", "Thematic need", "Share knowledge/interests/culture",
-  "Information needs", "intro_ib_thematic", "Topic_Shannon", "Thematic need", "Topic diversity",
-  "Information needs", "intro_ib_problem", "Share_Practical_Service", "Problem-related need", "Share practical information/service",
-  "Information needs", "intro_ib_problem", "Share_Researched", "Problem-related need", "Sought further information",
-  "Information needs", "intro_ib_social", "Share_Peer_Sources", "Social need", "Share peer sources",
-  "Information needs", "intro_ib_social", "Share_Together", "Social need", "Use together with others",
-  "Usage intensity", "intro_intensity", "Share_Read_Thoroughly", "Usage intensity", "Read/watched thoroughly",
-  "Usage intensity", "intro_intensity", "Share_Researched", "Usage intensity", "Sought further information",
-  "Usage intensity", "intro_intensity", "Share_Engaged", "Usage intensity", "Visibly engaged",
-  "Age", "intro_age_num", "Share_Publicly_Relevant", "Age", "Share publicly relevant",
-  "Age", "intro_age_num", "Share_Incidental_Broad", "Age", "Diary incidental (broad)",
-  "Age", "intro_age_num", "Topic_Shannon", "Age", "Topic diversity",
-  "Age", "intro_age_num", "Share_Video", "Age", "Share video"
+  "Kalibrierung", "incidentality_index", "Share_Incidental_Broad", "Screening-Incidentality", "Diary-Incidentality breit",
+  "Kalibrierung", "incidentality_index", "Share_Incidental_Strict", "Screening-Incidentality", "Diary-Incidentality strikt",
+  "Informationsbedürfnisse", "intro_ib_undirected", "Share_Current_Affairs", "Ungerichtetes Bedürfnis", "Anteil aktuelle/öffentliche Angelegenheiten",
+  "Informationsbedürfnisse", "intro_ib_thematic", "Share_Knowledge_Interests", "Thematisches Bedürfnis", "Anteil Wissen/Interessen/Kultur",
+  "Informationsbedürfnisse", "intro_ib_thematic", "Topic_Shannon", "Thematisches Bedürfnis", "Thematische Diversität",
+  "Informationsbedürfnisse", "intro_ib_problem", "Share_Practical_Service", "Problembezogenes Bedürfnis", "Anteil praktische Information/Service",
+  "Informationsbedürfnisse", "intro_ib_problem", "Share_Researched", "Problembezogenes Bedürfnis", "Weiterführende Recherche",
+  "Informationsbedürfnisse", "intro_ib_social", "Share_Peer_Sources", "Soziales Bedürfnis", "Anteil Peer-Quellen",
+  "Informationsbedürfnisse", "intro_ib_social", "Share_Together", "Soziales Bedürfnis", "Nutzung gemeinsam mit anderen",
+  "Nutzungsintensität", "intro_intensity", "Share_Read_Thoroughly", "Nutzungsintensität", "Gründlich gelesen/angeschaut",
+  "Nutzungsintensität", "intro_intensity", "Share_Researched", "Nutzungsintensität", "Weiter recherchiert",
+  "Nutzungsintensität", "intro_intensity", "Share_Engaged", "Nutzungsintensität", "Sichtbar interagiert",
+  "Alter", "intro_age_num", "Share_Publicly_Relevant", "Alter", "Anteil öffentlich relevant",
+  "Alter", "intro_age_num", "Share_Incidental_Broad", "Alter", "Diary-Incidentality breit",
+  "Alter", "intro_age_num", "Topic_Shannon", "Alter", "Thematische Diversität",
+  "Alter", "intro_age_num", "Share_Video", "Alter", "Anteil Bewegtbild"
 )
 
 integration_correlations <- pmap_dfr(
@@ -914,21 +1005,21 @@ calibration_summary <- participant_metrics %>%
 integration_export <- bind_rows(
   integration_correlations %>%
     transmute(
-      Type = "Spearman correlation",
+      Type = "Spearman-Korrelation",
       Family,
-      Measure = paste(Variable_1, "~", Variable_2),
+      Measure = paste(Variable_1, "↔", Variable_2),
       N,
       Estimate = Spearman_Rho,
       SD = NA_real_,
       Median = NA_real_,
       P_Value,
       P_Adjusted_BH,
-      Note = "Exploratory; participant level"
+      Note = "Explorativ; Teilnehmer-Ebene"
     ),
   calibration_summary %>%
     transmute(
-      Type = "Calibration description",
-      Family = "Calibration",
+      Type = "Kalibrierungsdeskription",
+      Family = "Kalibrierung",
       Measure,
       N,
       Estimate,
@@ -936,7 +1027,7 @@ integration_export <- bind_rows(
       Median,
       P_Value = NA_real_,
       P_Adjusted_BH = NA_real_,
-      Note = "Higher alignment = stronger agreement; gaps = standardized difference"
+      Note = "Höhere Alignment-Werte = stärkere Übereinstimmung; Gaps = standardisierte Differenz"
     )
 )
 
@@ -968,7 +1059,9 @@ header_style <- openxlsx::createStyle(
 participant_export <- participant_metrics %>%
   select(
     participant, N_Screenshots, N_Active_Days, N_Public_Relevant,
-    N_Not_Public_Relevant, N_Not_Assessable, Share_Publicly_Relevant,
+    N_Not_Public_Relevant, N_Public_Unclear, N_No_Single_Post,
+    N_Technical_Error, N_Public_Residual, Share_Publicly_Relevant,
+    N_Advertisement, N_No_Advertisement, N_Advertisement_Unclear, Share_Advertisement,
     N_Public_Content_Posts, Share_Incidental_Strict, Share_Incidental_Broad,
     Share_Targeted, Share_Read_Thoroughly, Share_Researched, Share_Engaged,
     Share_Any_Interaction, Share_Home, Share_Away, Share_Alone, Share_Together,
@@ -998,62 +1091,75 @@ add_excel_sheet(workbook, "Integration", integration_export, header_style)
 
 openxlsx::saveWorkbook(workbook, output_excel, overwrite = overwrite_outputs)
 
-# Publication-ready tables (.docx), APA-style. RQ1 = content; RQ2 = use/contexts;
-# trajectories; and the exploratory screening-diary integration.
-
-# Combines post-weighted percentages with participant-weighted means (SD).
-build_dist_table <- function(vars) {
-  screenshot <- main_distributions %>%
-    filter(Weighting == "Screenshot", Variable %in% vars) %>%
-    transmute(Dimension = Variable, Category, n = N_Units,
-              `% (posts)` = fmt_num(Percent, 1))
-  participant <- main_distributions %>%
-    filter(Weighting == "Participant", Variable %in% vars) %>%
-    transmute(Dimension = Variable, Category,
-              `% (participants, M)` = fmt_num(Percent, 1),
-              SD = fmt_num(SD_Percent, 1))
-  screenshot %>% left_join(participant, by = c("Dimension", "Category"))
-}
-
-save_pub_table(
-  build_dist_table(c("Topic", "Source", "Platform", "Format")),
-  file.path(tables_folder, "Tab_Daily_Content_Distributions.docx"),
-  table_number = 4,
-  title = "Content of publicly relevant posts (RQ1)",
-  note = "Post-weighted percentages and participant-weighted means (SD across participants). Percentages are based on valid cases."
-)
-save_pub_table(
-  build_dist_table(c("Incidental exposure", "Spatial context", "Social context")),
-  file.path(tables_folder, "Tab_Daily_Use_Contexts.docx"),
-  table_number = 5,
-  title = "Incidental exposure and situational contexts (RQ2)",
-  note = "Incidental exposure uses the three-point measure; the broad definition also counts 'Followed, not deliberately sought' (per preregistration)."
-)
-save_pub_table(
-  day_summary,
-  file.path(tables_folder, "Tab_Daily_Day_Summary.docx"),
-  table_number = 6,
-  title = "Trajectories across the seven diary days"
-)
-save_pub_table(
-  integration_export,
-  file.path(tables_folder, "Tab_Daily_Integration_Exploratory.docx"),
-  table_number = 7,
-  title = "Exploratory screening-diary associations",
-  note = "Exploratory; participant-level Spearman correlations, BH-corrected within each family."
-)
-
 
 #===============================================================================
 # 17 Figures
 #===============================================================================
-# Main figures use the shared project theme from 00_Helpers.R. Categorical
-# descriptions deliberately stay with absolute counts; colour, typography and
-# direct labels serve only faster readability.
+# Die Hauptgrafiken verwenden das gemeinsame Projekttheme aus 00_Helpers.R.
+# Kategoriale Deskriptionen bleiben bewusst bei absoluten Häufigkeiten; Farbe,
+# Typografie und direkte Labels dienen nur der schnelleren Lesbarkeit.
 
 if (create_figures) {
   
-  # Topics: horizontal bars are more readable with long category names.
+  # Coding-Status: kompakte quantitative Übersicht über öffentliche Relevanz und
+  # Werbung. Prozentwerte beziehen sich jeweils auf gültige Codes der Variable.
+  coding_status_plot_data <- bind_rows(
+    status_distribution_data %>%
+      filter(!is.na(public_rel_status)) %>%
+      count(Category = public_rel_status, name = "N") %>%
+      mutate(Variable = "Öffentliche Relevanz"),
+    status_distribution_data %>%
+      filter(!is.na(advertisement)) %>%
+      count(Category = advertisement, name = "N") %>%
+      mutate(Variable = "Werbung / Anzeige")
+  ) %>%
+    group_by(Variable) %>%
+    mutate(
+      Percent = 100 * N / sum(N),
+      Label = paste0(N, "  (", round(Percent, 1), " %)")
+    ) %>%
+    ungroup() %>%
+    mutate(Category_Plot = stringr::str_wrap(as.character(Category), width = 38))
+  
+  p_coding_status <- ggplot(
+    coding_status_plot_data,
+    aes(x = N, y = forcats::fct_reorder(Category_Plot, N))
+  ) +
+    geom_col(
+      width = 0.64,
+      fill = unname(project_colors["primary"])
+    ) +
+    geom_text(
+      aes(label = Label),
+      hjust = -0.12,
+      size = 3.2,
+      fontface = "bold",
+      colour = unname(project_colors["dark"])
+    ) +
+    facet_wrap(~ Variable, ncol = 1, scales = "free_y") +
+    scale_x_continuous(
+      expand = expansion(mult = c(0, 0.24))
+    ) +
+    labs(
+      title = "Öffentliche Relevanz und Werbung",
+      subtitle = paste0("Alle vollständig codierten Beiträge im Analysesample; N = ", nrow(status_distribution_data)),
+      x = "Anzahl Beiträge",
+      y = NULL
+    ) +
+    theme_project(base_size = 11.5, legend_position = "none") +
+    theme(
+      panel.grid.major.y = element_blank(),
+      strip.text = element_text(face = "bold")
+    )
+  
+  save_project_plot(
+    p_coding_status,
+    file.path(figure_folder, "Daily_Public_Relevance_Advertisement.png"),
+    width = 9.0,
+    height = 7.0
+  )
+  
+  # Themen: horizontale Balken sind bei langen Kategorienamen besser lesbar.
   topic_plot_data <- daily %>%
     count(topic_coded, name = "N") %>%
     mutate(
@@ -1079,9 +1185,9 @@ if (create_figures) {
       expand = expansion(mult = c(0, 0.12))
     ) +
     labs(
-      title = "Topics of publicly relevant posts",
-      subtitle = paste0("Absolute counts; N = ", nrow(daily), " posts"),
-      x = "Number of posts",
+      title = "Themen der öffentlich relevanten Beiträge",
+      subtitle = paste0("Absolute Häufigkeiten; N = ", nrow(daily), " Beiträge"),
+      x = "Anzahl Beiträge",
       y = NULL
     ) +
     theme_project(base_size = 11.5, legend_position = "none") +
@@ -1094,8 +1200,8 @@ if (create_figures) {
     height = 6.4
   )
   
-  # Sources: the same display logic as the topic plot eases direct comparison of
-  # the two central content dimensions.
+  # Quellen: dieselbe Darstellungslogik wie beim Themenplot erleichtert den
+  # direkten Vergleich der beiden zentralen Inhaltsdimensionen.
   source_plot_data <- daily %>%
     count(source_coded, name = "N") %>%
     mutate(
@@ -1121,9 +1227,9 @@ if (create_figures) {
       expand = expansion(mult = c(0, 0.12))
     ) +
     labs(
-      title = "Sources of publicly relevant posts",
-      subtitle = "Coded account / source types",
-      x = "Number of posts",
+      title = "Quellen der öffentlich relevanten Beiträge",
+      subtitle = "Codierte Account- bzw. Quellentypen",
+      x = "Anzahl Beiträge",
       y = NULL
     ) +
     theme_project(base_size = 11.5, legend_position = "none") +
@@ -1136,17 +1242,18 @@ if (create_figures) {
     height = 6.1
   )
   
-  # Format: not-determinable cases stay visible but are visually de-emphasized,
-  # so data quality is apparent without implying a genuine fifth format category.
+  # Format: nicht bestimmbare Fälle bleiben sichtbar, werden aber optisch
+  # zurückgenommen. So ist die Datenqualität erkennbar, ohne eine fünfte echte
+  # Formatkategorie zu suggerieren.
   format_plot_data <- daily %>%
     mutate(
       Format = if_else(
-        media_format_code == -1L,
-        "Not determinable",
+        media_format_code == 99L,
+        "Nicht bestimmbar",
         as.character(media_format)
       ),
       Format = stringr::str_wrap(Format, width = 34),
-      Assessability = if_else(Format == "Not determinable", "Not determinable", "Format")
+      Assessability = if_else(Format == "Nicht bestimmbar", "Nicht bestimmbar", "Format")
     ) %>%
     count(Format, Assessability, name = "N")
   
@@ -1169,15 +1276,15 @@ if (create_figures) {
     scale_fill_manual(
       values = c(
         "Format" = unname(project_colors["primary"]),
-        "Not determinable" = unname(project_colors["light"])
+        "Nicht bestimmbar" = unname(project_colors["light"])
       )
     ) +
     scale_x_continuous(
       expand = expansion(mult = c(0, 0.14))
     ) +
     labs(
-      title = "Formats of publicly relevant posts",
-      x = "Number of posts",
+      title = "Formate der öffentlich relevanten Beiträge",
+      x = "Anzahl Beiträge",
       y = NULL,
       fill = NULL
     ) +
@@ -1191,7 +1298,7 @@ if (create_figures) {
     height = 4.7
   )
   
-  # Discovery mode: direct N labels instead of slanted axis text.
+  # Auffindungsweg: direkte N-Labels statt schräger Achsenbeschriftungen.
   incidentality_plot_data <- daily %>%
     count(incidentality, name = "N") %>%
     mutate(
@@ -1217,9 +1324,9 @@ if (create_figures) {
       expand = expansion(mult = c(0, 0.14))
     ) +
     labs(
-      title = "How posts were encountered",
-      subtitle = "Self-report immediately after upload",
-      x = "Number of posts",
+      title = "Wie Beiträge gefunden wurden",
+      subtitle = "Selbstbericht direkt nach dem Upload",
+      x = "Anzahl Beiträge",
       y = NULL
     ) +
     theme_project(base_size = 12, legend_position = "none") +
@@ -1232,9 +1339,9 @@ if (create_figures) {
     height = 4.8
   )
   
-  # Processing by discovery mode: three actions are shown side by side within
-  # each discovery mode; values are percentages of the respective group, not of
-  # all posts.
+  # Verarbeitung nach Auffindungsweg: drei Handlungen werden innerhalb jedes
+  # Auffindungswegs nebeneinander gezeigt; Werte sind Prozent der jeweiligen
+  # Gruppe, nicht Prozent aller Beiträge.
   processing_plot_data <- processing_incidentality %>%
     filter(!is.na(Group)) %>%
     mutate(
@@ -1269,10 +1376,10 @@ if (create_figures) {
       expand = expansion(mult = c(0, 0.07))
     ) +
     labs(
-      title = "Processing by discovery mode",
-      subtitle = "Share within each discovery mode",
+      title = "Verarbeitung nach Auffindungsweg",
+      subtitle = "Anteil innerhalb des jeweiligen Auffindungswegs",
       x = NULL,
-      y = "Share",
+      y = "Anteil",
       fill = NULL
     ) +
     theme_project(base_size = 11.5, legend_position = "bottom") +
@@ -1288,8 +1395,8 @@ if (create_figures) {
     height = 6.1
   )
   
-  # Daily trends: facets avoid a shared scale for very different indicators.
-  # Lines show purely descriptive trajectories.
+  # Tagesverlauf: Facets vermeiden eine gemeinsame Skala für sehr verschiedene
+  # Indikatoren. Linien zeigen ausschließlich deskriptive Verläufe.
   day_plot_data <- day_summary %>%
     select(
       study_day,
@@ -1307,11 +1414,11 @@ if (create_figures) {
     mutate(
       Indicator = recode(
         Indicator,
-        Public_Relevance_Percent = "Publicly relevant",
-        Incidental_Broad_Percent = "Incidental (broad)",
-        Read_Percent = "Read thoroughly",
-        Topic_Novelty_Percent = "New topic in diary",
-        Serendipity_Strict_Percent = "Productive serendipity"
+        Public_Relevance_Percent = "Öffentliche Relevanz",
+        Incidental_Broad_Percent = "Inzidentell (breit)",
+        Read_Percent = "Gründlich rezipiert",
+        Topic_Novelty_Percent = "Neues Thema im Diary",
+        Serendipity_Strict_Percent = "Produktive Serendipität"
       )
     )
   
@@ -1331,10 +1438,10 @@ if (create_figures) {
     scale_x_continuous(breaks = expected_study_days) +
     scale_y_continuous(labels = function(x) paste0(round(x), " %")) +
     labs(
-      title = "Trajectories across the seven diary days",
-      subtitle = "Descriptive; novelty can decline in a diary through repeated observation alone",
-      x = "Study day",
-      y = "Share"
+      title = "Verlauf über die sieben Diary-Tage",
+      subtitle = "Deskriptiv; Neuheit kann im Diary allein durch wiederholte Beobachtung abnehmen",
+      x = "Studientag",
+      y = "Anteil"
     ) +
     theme_project(base_size = 10.8, legend_position = "none") +
     theme(
@@ -1349,8 +1456,8 @@ if (create_figures) {
     height = 7.6
   )
   
-  # Screening-diary calibration: points are participants. The LM line serves only
-  # visual orientation; inference stays with Spearman rho.
+  # Screening–Diary-Kalibrierung: Punkte zeigen Personen. Die LM-Linie dient
+  # ausschließlich der visuellen Orientierung; inferenziell bleibt Spearman ρ.
   calibration_plot_data <- participant_metrics %>%
     filter(!is.na(incidentality_index), !is.na(Share_Incidental_Broad))
   
@@ -1381,10 +1488,10 @@ if (create_figures) {
         labels = function(x) paste0(x, " %")
       ) +
       labs(
-        title = "Screening vs. diary incidental exposure",
-        subtitle = "Participant level; regression line for visual orientation only",
-        x = "Screening incidental exposure (1–5)",
-        y = "Broadly incidental diary posts"
+        title = "Screening- und Diary-Incidentality",
+        subtitle = "Personenebene; Regressionslinie nur zur visuellen Orientierung",
+        x = "Screening-Incidentality (1–5)",
+        y = "Breit inzidentelle Diary-Beiträge"
       ) +
       theme_project(base_size = 12, legend_position = "none")
     
@@ -1407,7 +1514,10 @@ cat(
   "Participants: ", length(eligible_ids), "\n",
   "Screenshots: ", nrow(daily_all), "\n",
   "Public content posts: ", nrow(daily), "\n",
-  "Not assessable (-1): ", sum(daily_all$public_rel_coded == -1L, na.rm = TRUE), "\n",
+  "Public relevance residuals (97-99): ", sum(daily_all$public_rel_coded %in% c(97L, 98L, 99L), na.rm = TRUE), "\n",
+  "Advertisements: ", sum(daily_all$advertisement_code == 1L, na.rm = TRUE), "\n",
+  "No advertisements: ", sum(daily_all$advertisement_code == 2L, na.rm = TRUE), "\n",
+  "Advertisement unclear (99): ", sum(daily_all$advertisement_code == 99L, na.rm = TRUE), "\n",
   "Excel: ", output_excel, "\n",
   sep = ""
 )
