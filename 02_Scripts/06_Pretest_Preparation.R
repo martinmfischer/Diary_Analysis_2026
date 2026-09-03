@@ -1,20 +1,27 @@
 ################################################################################
 # Project: Tagebuchstudie
-# File:    06_Pretest_Preparation.R
+# File:    06_Pretest_Preparation_Pretest2.R
 #
 # Purpose:
-#   Bereitet zwei Kodier-Pretests vor:
+#   Ergänzt einen bereits begonnenen Pretest um eine zweite gemeinsame
+#   Kodierung und bereitet anschließend den Reliabilitäts-Pretest vor.
 #
-#   1) Gemeinsame Kodierung / Codebuch-Check
-#      - 60 Screenshots
-#      - 15 pro Plattform (Facebook, Instagram, TikTok, X)
+#   1) Gemeinsame Kodierung 1 / Codebuch-Check
+#      - bereits aus Pretest 1 vorhanden
+#      - wird von diesem Skript NICHT neu erzeugt, gelöscht oder überschrieben
+#
+#   2) Gemeinsame Kodierung 2 / zweiter Codebuch-Check
+#      - 40 neue Screenshots
+#      - 10 pro Plattform (Facebook, Instagram, TikTok, X)
 #      - identisches Sample für MF und LA
+#      - alle Screenshots aus Gemeinsamer Kodierung 1 sind ausgeschlossen
 #
-#   2) Reliabilitäts-Pretest
+#   3) Reliabilitäts-Pretest
 #      - getrennte Kodierung desselben Samples durch MF und LA
-#      - 10 % des verfügbaren finalen Screenshot-Samples oder maximal 100 Beiträge
+#      - 10 % des nach Ausschluss von Pretest 1 verfügbaren Screenshot-Samples
+#        oder maximal 100 Beiträge
 #      - wegen Plattformbalance immer gleiche Fallzahl pro Plattform
-#      - Sample ist standardmäßig disjunkt von Stufe 1
+#      - standardmäßig zusätzlich disjunkt von Gemeinsamer Kodierung 2
 #
 # Sampling:
 #   - stratifiziert nach Plattform
@@ -22,21 +29,28 @@
 #     zunächst höchstens ein Screenshot pro Person, bevor weitere Screenshots
 #     derselben Person gezogen werden
 #   - zufällige Auswahl bei reproduzierbarem Seed
+#   - Fälle aus Pretest 1 werden vor dem Sampling vollständig ausgeschlossen
 #   - Coding-Reihenfolge: Plattformblöcke Facebook -> Instagram -> TikTok -> X;
-#     innerhalb der Plattformen zufällige Reihenfolge
+#     innerhalb der Plattformen strikt alphabetisch nach screenshot_id
 #
 # Transfer ins finale Coding-Sheet:
 #   - screenshot_id wird NIEMALS verändert und ist der verbindliche Merge-Key.
 #   - Auch participant, study_day, photo und filename bleiben unverändert.
 #   - Die manuellen Coding-Spalten haben exakt dieselben Namen wie im finalen
 #     Coding-Sheet und können daher später per screenshot_id übernommen werden.
-#   - Nur filepath wird im Pretest auf die kopierte Datei in 07_Pretest gesetzt;
-#     original_filepath bewahrt den Pfad aus dem regulären Coding-Sample.
+#   - Nur filepath wird für neu erzeugte Stufen auf die Arbeitskopie in
+#     07_Pretest gesetzt; original_filepath bewahrt den regulären Pfad.
 #
 # Output:
 #
 #   07_Pretest/
-#   ├── 01_Gemeinsame_Kodierung/
+#   ├── 01_Gemeinsame_Kodierung/       # BESTAND: bleibt unverändert
+#   │   ├── Screenshots/ ...
+#   │   ├── coding_sheet_MF.xlsx
+#   │   ├── coding_sheet_LA.xlsx
+#   │   └── sample_manifest.csv
+#   │
+#   ├── 02_Gemeinsame_Kodierung/       # NEU
 #   │   ├── Screenshots/
 #   │   │   ├── Facebook/
 #   │   │   ├── Instagram/
@@ -46,7 +60,7 @@
 #   │   ├── coding_sheet_LA.xlsx
 #   │   └── sample_manifest.csv
 #   │
-#   └── 02_Reliabilitaets_Pretest/
+#   └── 03_Reliabilitaets_Pretest/     # NEU
 #       ├── Screenshots/
 #       │   ├── Facebook/
 #       │   ├── Instagram/
@@ -55,6 +69,11 @@
 #       ├── coding_sheet_MF.xlsx
 #       ├── coding_sheet_LA.xlsx
 #       └── sample_manifest.csv
+#
+# Migration:
+#   - Falls aus einer früheren Skriptversion noch 07_Pretest/02_Reliabilitaets_Pretest
+#     existiert, wird dieser Ordner NICHT gelöscht, sondern vor dem Neuaufbau nach
+#     07_Pretest_Archiv/02_Reliabilitaets_Pretest_vor_Pretest2 verschoben.
 #
 # Input:
 #   01_Data/taeglicher_fragebogen_screenshot_upload.rds
@@ -102,16 +121,115 @@ platform_order <- c(
   "X"
 )
 
-# Stufe 1: gemeinsame Kodierung.
-common_n_per_platform <- 15L
+# Neue Stufe 2: zweite gemeinsame Kodierung.
+common_n_per_platform <- 10L
 
-# Stufe 2: Reliabilitäts-Pretest.
+# Stufe 3: Reliabilitäts-Pretest.
 reliability_share <- 0.10
 reliability_max_total <- 100L
 
-# TRUE würde erlauben, dass Screenshots aus Stufe 1 erneut im Reliabilitäts-
-# Pretest auftauchen. Methodisch ist FALSE vorzuziehen.
+# TRUE würde erlauben, dass Screenshots aus der neuen Gemeinsamen Kodierung 2
+# erneut im Reliabilitäts-Pretest auftauchen. Fälle aus Gemeinsamer Kodierung 1
+# bleiben unabhängig davon immer ausgeschlossen. Methodisch ist FALSE vorzuziehen.
 allow_overlap_between_stages <- FALSE
+
+
+# Screenshots aus Pretest 1.
+# Die hier notierten IDs dienen nur als komfortable Eingabe. Für den eigentlichen
+# Ausschluss werden participant, study_day und photo extrahiert. Dadurch bleibt
+# der Ausschluss robust, falls derive_screenshot_index() die Tageskennung z. B.
+# als "Tag_4" statt "D4" in screenshot_id schreibt.
+pretest_1_screenshot_ids <- c(
+  "02hc7dvz_D4_P7",
+  "4a45imez_D5_P1",
+  "pdus4hpc_D4_P1",
+  "e9hhromj_D5_P3",
+  "ankdmy5q_D7_P5",
+  "deexhb69_D4_P6",
+  "yb8tcvqe_D7_P5",
+  "wqso8u8v_D3_P4",
+  "19r0tw6b_D5_P2",
+  "6ppuypb2_D6_P1",
+  "gv33szdx_D6_P1",
+  "tfcrp7gt_D6_P2",
+  "u7xjqnf7_D5_P1",
+  "p03zl58f_D2_P3",
+  "lvaovr1a_D4_P3",
+  "h5v5lt6o_D3_P3",
+  "n6umsvm5_D2_P1",
+  "dbkhhmyl_D2_P1",
+  "0ckf7kww_D6_P5",
+  "bw0qd30f_D6_P8",
+  "on9iokv6_D2_P1",
+  "t2mz057i_D4_P4",
+  "lvaovr1a_D6_P3",
+  "e3elj562_D3_P4",
+  "u7xjqnf7_D1_P4",
+  "it5klml9_D2_P4",
+  "4uc0fpd9_D6_P1",
+  "wqso8u8v_D4_P3",
+  "mvlgg33x_D1_P1",
+  "a1ud7rld_D5_P1",
+  "zccekn3q_D5_P4",
+  "aygez65h_D1_P1",
+  "lvaovr1a_D2_P1",
+  "u7xjqnf7_D3_P1",
+  "aygez65h_D4_P3",
+  "v9r3ewpq_D7_P2",
+  "0ckf7kww_D3_P1",
+  "bsffafmo_D4_P9",
+  "it5klml9_D3_P4",
+  "0ckf7kww_D2_P9",
+  "u7kjr0xs_D3_P1",
+  "zccekn3q_D5_P1",
+  "bsffafmo_D3_P9",
+  "u7kjr0xs_D3_P8",
+  "v9r3ewpq_D5_P5",
+  "1j2qf7sb_D4_P5",
+  "n91q8dxe_D7_P3",
+  "it5klml9_D6_P4",
+  "k401d9b5_D6_P1",
+  "y6mmse6u_D2_P4",
+  "v9r3ewpq_D3_P2",
+  "bsffafmo_D6_P5",
+  "4fkmpl0t_D7_P2",
+  "wrogy83s_D5_P10",
+  "wrogy83s_D3_P10",
+  "v9r3ewpq_D3_P1",
+  "kgfkzwyp_D5_P1",
+  "4fkmpl0t_D3_P6",
+  "mhbm4oja_D5_P10",
+  "u7kjr0xs_D5_P10"
+)
+
+if (length(pretest_1_screenshot_ids) != 60L) {
+  stop(
+    "Die Ausschlussliste für Pretest 1 muss exakt 60 Screenshot-IDs enthalten; ",
+    "aktuell sind es ", length(pretest_1_screenshot_ids), "."
+  )
+}
+
+pretest_1_exclusions <- tibble::tibble(
+  screenshot_id_pretest1 = pretest_1_screenshot_ids
+) %>%
+  tidyr::extract(
+    screenshot_id_pretest1,
+    into = c("participant", "study_day", "photo"),
+    regex = "^(.*)_D([0-9]+)_P([0-9]+)$",
+    remove = FALSE,
+    convert = TRUE
+  )
+
+if (anyNA(pretest_1_exclusions[c("participant", "study_day", "photo")])) {
+  stop(
+    "Mindestens eine Ausschluss-ID aus Pretest 1 entspricht nicht dem Muster ",
+    "participant_D[Tag]_P[Foto]."
+  )
+}
+
+if (anyDuplicated(pretest_1_exclusions[c("participant", "study_day", "photo")]) > 0) {
+  stop("Die Ausschlussliste für Pretest 1 enthält doppelte Fälle.")
+}
 
 
 #===============================================================================
@@ -127,14 +245,37 @@ participant_folder <- "05_Participants"
 
 output_root <- "07_Pretest"
 
-common_folder <- file.path(
+# Bereits durchgeführter erster gemeinsamer Pretest. Dieser Ordner ist geschützt
+# und wird von diesem Skript niemals gelöscht oder überschrieben.
+common_folder_pretest1 <- file.path(
   output_root,
   "01_Gemeinsame_Kodierung"
 )
 
+# Neu zu erzeugender zweiter gemeinsamer Pretest.
+common_folder <- file.path(
+  output_root,
+  "02_Gemeinsame_Kodierung"
+)
+
+# Neu zu erzeugender Reliabilitäts-Pretest.
 reliability_folder <- file.path(
   output_root,
+  "03_Reliabilitaets_Pretest"
+)
+
+# Alte Ordnerbezeichnung aus der vorherigen Skriptversion. Falls vorhanden,
+# wird sie archiviert, damit 07_Pretest anschließend genau die drei gewünschten
+# Stufen enthält, ohne Daten aus dem alten Ordner zu vernichten.
+legacy_reliability_folder <- file.path(
+  output_root,
   "02_Reliabilitaets_Pretest"
+)
+
+archive_root <- "07_Pretest_Archiv"
+legacy_reliability_archive <- file.path(
+  archive_root,
+  "02_Reliabilitaets_Pretest_vor_Pretest2"
 )
 
 
@@ -146,6 +287,93 @@ if (!file.exists(data_file)) {
   stop("Daily-RDS nicht gefunden: ", data_file)
 }
 
+fs::dir_create(output_root)
+
+# Inhaltssnapshot des geschützten ersten Pretests. Neben Dateinamen und Größen
+# werden MD5-Prüfsummen erfasst. Am Skriptende wird derselbe Snapshot erneut
+# erzeugt; jede inhaltliche Veränderung führt zu einem Fehler.
+snapshot_protected_folder <- function(folder) {
+  if (!fs::dir_exists(folder)) {
+    return(NULL)
+  }
+  
+  files <- fs::dir_ls(
+    folder,
+    recurse = TRUE,
+    type = "file",
+    all = TRUE
+  )
+  
+  if (length(files) == 0) {
+    return(tibble::tibble(
+      relative_path = character(),
+      size = numeric(),
+      md5 = character()
+    ))
+  }
+  
+  tibble::tibble(
+    relative_path = fs::path_rel(files, start = folder),
+    size = as.numeric(fs::file_size(files)),
+    md5 = unname(tools::md5sum(files))
+  ) %>%
+    arrange(relative_path)
+}
+
+protected_pretest1_before <- snapshot_protected_folder(common_folder_pretest1)
+
+# 01_Gemeinsame_Kodierung ist Altbestand und ausdrücklich geschützt.
+# Auch overwrite_existing = TRUE betrifft diesen Ordner NICHT.
+if (fs::dir_exists(common_folder_pretest1)) {
+  message(
+    "Bestehender erster gemeinsamer Pretest bleibt unverändert: ",
+    common_folder_pretest1
+  )
+} else {
+  warning(
+    "Der erwartete Altbestand wurde nicht gefunden: ",
+    common_folder_pretest1,
+    ". Das Skript legt diesen Ordner bewusst nicht neu an."
+  )
+}
+
+# Migration der alten Reliabilitäts-Ordnerbezeichnung. Der Ordner wird nicht
+# gelöscht, sondern außerhalb von 07_Pretest archiviert.
+if (fs::dir_exists(legacy_reliability_folder)) {
+  if (fs::dir_exists(legacy_reliability_archive)) {
+    stop(
+      "Alter Reliabilitäts-Ordner gefunden, aber das Archivziel existiert ",
+      "bereits. Bitte Archivbestand prüfen:\n  ",
+      legacy_reliability_archive
+    )
+  }
+  
+  fs::dir_create(archive_root)
+  
+  # fs besitzt keine exportierte Funktion dir_move(). Für Verzeichnisse
+  # verwenden wir deshalb file.rename(); Quelle und Archivziel liegen hier
+  # auf demselben Dateisystem. Der Rückgabewert wird explizit geprüft.
+  move_success <- file.rename(
+    from = legacy_reliability_folder,
+    to   = legacy_reliability_archive
+  )
+  
+  if (!isTRUE(move_success)) {
+    stop(
+      "Der alte Reliabilitäts-Ordner konnte nicht ins Archiv verschoben werden:\n",
+      "  Quelle: ", legacy_reliability_folder, "\n",
+      "  Ziel:   ", legacy_reliability_archive
+    )
+  }
+  
+  message(
+    "Alten Reliabilitäts-Ordner sicher archiviert unter: ",
+    legacy_reliability_archive
+  )
+}
+
+# Nur die beiden NEU zu erzeugenden Stufen unterliegen overwrite_existing.
+# 01_Gemeinsame_Kodierung ist absichtlich nicht Teil dieser Liste.
 stage_folders <- c(
   common_folder,
   reliability_folder
@@ -163,15 +391,15 @@ if (overwrite_existing) {
   
   if (length(existing_stage_folders) > 0) {
     stop(
-      "Mindestens ein Pretest-Ordner existiert bereits und wird nicht ",
-      "überschrieben:\n",
+      "Mindestens ein neu zu erzeugender Pretest-Ordner existiert bereits und ",
+      "wird nicht überschrieben:\n",
       paste0("  - ", existing_stage_folders, collapse = "\n"),
-      "\n\nFür einen bewussten Neuaufbau overwrite_existing <- TRUE setzen."
+      "\n\nFür einen bewussten Neuaufbau von Stufe 2/3 ",
+      "overwrite_existing <- TRUE setzen. ",
+      "01_Gemeinsame_Kodierung bleibt dabei geschützt."
     )
   }
 }
-
-fs::dir_create(output_root)
 
 
 #===============================================================================
@@ -371,16 +599,50 @@ coding_master <- coding_master %>%
 #===============================================================================
 
 # Für den Pretest werden nur tatsächlich vorhandene Dateien mit eindeutig
-# zuordenbarer Plattform verwendet. Dies ist zugleich die Bezugsmenge für die
-# 10-%-Regel des Reliabilitäts-Pretests.
-sampling_pool <- coding_master %>%
+# zuordenbarer Plattform verwendet. Anschließend werden sämtliche Fälle aus
+# Pretest 1 ausgeschlossen. Die Bezugsmenge für das neue Sampling enthält damit
+# keine bereits in Pretest 1 verwendeten Screenshots.
+sampling_pool_before_pretest1_exclusion <- coding_master %>%
   filter(
     file_exists %in% TRUE,
     platform_reported %in% platform_order
   )
 
+# Robust gegen unterschiedliche Schreibweisen der screenshot_id (z. B. D4 vs.
+# Tag_4), weil über die kanonischen Komponenten gejoint wird.
+pretest1_matches <- sampling_pool_before_pretest1_exclusion %>%
+  semi_join(
+    pretest_1_exclusions,
+    by = c("participant", "study_day", "photo")
+  )
+
+sampling_pool <- sampling_pool_before_pretest1_exclusion %>%
+  anti_join(
+    pretest_1_exclusions,
+    by = c("participant", "study_day", "photo")
+  )
+
 n_master_total <- nrow(coding_master)
+n_sampling_pool_before_pretest1_exclusion <- nrow(
+  sampling_pool_before_pretest1_exclusion
+)
+n_excluded_pretest1 <- nrow(pretest1_matches)
 n_sampling_pool <- nrow(sampling_pool)
+
+missing_pretest1_exclusions <- pretest_1_exclusions %>%
+  anti_join(
+    sampling_pool_before_pretest1_exclusion,
+    by = c("participant", "study_day", "photo")
+  )
+
+if (nrow(missing_pretest1_exclusions) > 0) {
+  message(
+    nrow(missing_pretest1_exclusions),
+    " Ausschluss-ID(s) aus Pretest 1 waren im aktuell nutzbaren Pool nicht ",
+    "vorhanden (z. B. wegen fehlender Datei/ungültiger Plattform oder ",
+    "geändertem Datenstand)."
+  )
+}
 
 n_excluded_missing_file <- sum(
   coding_master$file_exists %in% FALSE
@@ -526,29 +788,25 @@ sample_equal_platforms <- function(
   
   # Lineare Coding-Reihenfolge:
   #   Facebook -> Instagram -> TikTok -> X.
-  # Innerhalb jedes Plattformblocks bleibt die Reihenfolge zufällig.
+  # Innerhalb jedes Plattformblocks strikt alphabetisch nach screenshot_id.
+  # Die Ziehung selbst bleibt zufällig und teilnehmerdivers; nur die Reihenfolge
+  # des fertig gezogenen Samples wird hier deterministisch sortiert.
   #
   # WICHTIG: pretest_order ist nur eine Arbeitsreihenfolge. screenshot_id,
   # filename und alle kanonischen Identifikatoren werden nicht verändert.
   selected %>%
-    group_by(platform_reported) %>%
-    mutate(
-      pretest_order_within_platform = sample.int(n())
-    ) %>%
-    ungroup() %>%
     mutate(
       platform_sort = match(platform_reported, platform_order)
     ) %>%
     arrange(
       platform_sort,
-      pretest_order_within_platform
+      screenshot_id
     ) %>%
     mutate(
       pretest_order = row_number()
     ) %>%
     select(
-      -platform_sort,
-      -pretest_order_within_platform
+      -platform_sort
     )
 }
 
@@ -594,7 +852,7 @@ if (reliability_n_total < reliability_requested_total) {
 
 
 #===============================================================================
-# 09 Draw Stage 1: common coding sample
+# 09 Draw Stage 2: second common coding sample
 #===============================================================================
 
 common_sample <- sample_equal_platforms(
@@ -603,12 +861,12 @@ common_sample <- sample_equal_platforms(
   seed = sampling_seed
 ) %>%
   mutate(
-    pretest_stage = "Gemeinsame Kodierung"
+    pretest_stage = "Gemeinsame Kodierung 2"
   )
 
 
 #===============================================================================
-# 10 Draw Stage 2: reliability sample
+# 10 Draw Stage 3: reliability sample
 #===============================================================================
 
 if (allow_overlap_between_stages) {
@@ -706,6 +964,35 @@ assert_sample_identity(
 )
 
 
+# Verifiziert die gewünschte Arbeitsreihenfolge unabhängig von der Sampling-
+# Funktion nochmals explizit: Plattformblöcke in definierter Reihenfolge und
+# darin strikt alphabetisch nach screenshot_id.
+assert_platform_alphabetical_order <- function(sample_data) {
+  expected_ids <- sample_data %>%
+    mutate(
+      platform_sort = match(platform_reported, platform_order)
+    ) %>%
+    arrange(
+      platform_sort,
+      screenshot_id
+    ) %>%
+    pull(screenshot_id)
+  
+  if (!identical(sample_data$screenshot_id, expected_ids)) {
+    stop(
+      "Interner Fehler: Die Coding-Reihenfolge ist nicht Facebook -> ",
+      "Instagram -> TikTok -> X mit alphabetischer screenshot_id-Sortierung ",
+      "innerhalb der Plattformen."
+    )
+  }
+  
+  invisible(TRUE)
+}
+
+assert_platform_alphabetical_order(common_sample)
+assert_platform_alphabetical_order(reliability_sample)
+
+
 # Safety checks.
 if (
   !allow_overlap_between_stages &&
@@ -718,6 +1005,19 @@ if (
 }
 
 for (sample_object in list(common_sample, reliability_sample)) {
+  
+  overlap_pretest1 <- sample_object %>%
+    semi_join(
+      pretest_1_exclusions,
+      by = c("participant", "study_day", "photo")
+    )
+  
+  if (nrow(overlap_pretest1) > 0) {
+    stop(
+      "Interner Fehler: Mindestens ein Screenshot aus Pretest 1 wurde erneut ",
+      "in das neue Sample gezogen."
+    )
+  }
   
   platform_counts <- sample_object %>%
     count(platform_reported)
@@ -840,6 +1140,7 @@ id_cols <- c(
 
 coding_cols <- c(
   "public_rel_coded",
+  "advertisement_coded",
   "topic_coded",
   "source_coded",
   "source_name_coded",
@@ -899,6 +1200,15 @@ codebook <- tribble(
   "public_rel_coded", "-1", "Not assessable",
   "Screenshot technically unusable or content not reliably assessable.",
   
+  "advertisement_coded", "1", "Werbung/Anzeige",
+  "Bezahlte Plattformwerbung oder klar als Werbung/Anzeige/Sponsored gekennzeichneter Beitrag.",
+  
+  "advertisement_coded", "2", "Keine Werbung/Anzeige",
+  "Keine erkennbare bezahlte oder entsprechend gekennzeichnete Werbung/Anzeige.",
+  
+  "advertisement_coded", "99", "Sonstiges/nicht eindeutig",
+  "Werbestatus anhand des Screenshots nicht eindeutig bestimmbar oder sonstiger Grenzfall.",
+  
   "topic_coded", "", "Main topic",
   "Only if public_rel_coded = 1; per the topic codebook.",
   
@@ -954,8 +1264,9 @@ create_pretest_workbook <- function(
   coding_export <- sample_data %>%
     mutate(
       # Manual coding
-      public_rel_coded  = NA_integer_,
-      topic_coded       = NA_character_,
+      public_rel_coded    = NA_integer_,
+      advertisement_coded = NA_integer_,
+      topic_coded         = NA_character_,
       source_coded      = NA_character_,
       source_name_coded = NA_character_,
       platform_coded    = platform_reported,
@@ -1180,8 +1491,9 @@ create_pretest_workbook <- function(
     )
     
     validation <- c(
-      public_rel_coded = '"1,0,-1"',
-      platform_coded   = '"Facebook,Instagram,TikTok,X"',
+      public_rel_coded    = '"1,0,-1"',
+      advertisement_coded = '"1,2,99"',
+      platform_coded      = '"Facebook,Instagram,TikTok,X"',
       media_format     = '"1,2,3,4,-1"',
       coding_completed = '"FALSE,TRUE"'
     )
@@ -1309,6 +1621,26 @@ create_pretest_workbook <- function(
     wb,
     "Coding",
     match(
+      "advertisement_coded",
+      names(coding_export)
+    ),
+    1,
+    openxlsx::createComment(
+      paste0(
+        "1 = Werbung/Anzeige\n",
+        "2 = Keine Werbung/Anzeige\n",
+        "99 = Sonstiges/nicht eindeutig\n\n",
+        "Unabhängig von public_rel_coded codieren."
+      ),
+      author = "Codebook"
+    )
+  )
+  
+  
+  openxlsx::writeComment(
+    wb,
+    "Coding",
+    match(
       "media_format",
       names(coding_export)
     ),
@@ -1345,6 +1677,7 @@ create_pretest_workbook <- function(
     filepath = 42,
     file_exists = 10,
     public_rel_coded = 14,
+    advertisement_coded = 18,
     topic_coded = 25,
     source_coded = 27,
     source_name_coded = 27,
@@ -1510,7 +1843,7 @@ for (current_coder in coders) {
   create_pretest_workbook(
     common_sample,
     coder_name = current_coder,
-    stage_name = "Gemeinsame Kodierung",
+    stage_name = "Gemeinsame Kodierung 2",
     output_excel = file.path(
       common_folder,
       paste0(
@@ -1604,24 +1937,28 @@ cat(
   "\nPRETEST PREPARATION COMPLETED\n",
   "========================================\n",
   "Available master screenshots:       ", n_master_total, "\n",
-  "Usable sampling pool:               ", n_sampling_pool, "\n",
+  "Usable pool before Pretest-1 excl.: ", n_sampling_pool_before_pretest1_exclusion, "\n",
+  "Excluded from Pretest 1:            ", n_excluded_pretest1, " / ",
+  nrow(pretest_1_exclusions), " requested\n",
+  "Usable sampling pool after excl.:   ", n_sampling_pool, "\n",
   "Excluded because file is missing:   ", n_excluded_missing_file, "\n",
   "Excluded because platform invalid:  ", n_excluded_platform, "\n",
   "\n",
-  "STAGE 1 – COMMON CODING\n",
+  "STAGE 2 – COMMON CODING 2\n",
   "Screenshots:                        ", nrow(common_sample), "\n",
   "Per platform:                       ", common_n_per_platform, "\n",
   "Participants represented:           ", common_participants, "\n",
   "\n",
-  "STAGE 2 – RELIABILITY PRETEST\n",
+  "STAGE 3 – RELIABILITY PRETEST\n",
   "10% / 100 requested before balance: ", reliability_requested_total, "\n",
   "Screenshots after platform balance: ", reliability_n_total, "\n",
   "Per platform:                       ", reliability_n_per_platform, "\n",
   "Participants represented:           ", reliability_participants, "\n",
   "\n",
-  "Overlap between stages:             ", overlap_n, "\n",
+  "Overlap between new stages 2/3:     ", overlap_n, "\n",
   "Merge key for final coding sheet:   screenshot_id\n",
-  "Coding order:                       Facebook -> Instagram -> TikTok -> X\n",
+  "Coding order:                       Facebook -> Instagram -> TikTok -> X; alphabetical within platform\n",
+  "Protected existing folder:          ", common_folder_pretest1, "\n",
   "Output folder:                      ", output_root, "\n",
   sep = ""
 )
@@ -1635,7 +1972,7 @@ print(platform_availability)
 
 
 cat(
-  "\nStage 1 distribution:\n"
+  "\nStage 2 (Common Coding 2) distribution:\n"
 )
 
 print(
@@ -1648,7 +1985,7 @@ print(
 
 
 cat(
-  "\nStage 2 distribution:\n"
+  "\nStage 3 (Reliability Pretest) distribution:\n"
 )
 
 print(
@@ -1660,4 +1997,51 @@ print(
 )
 
 
-message("Finished preparing both pretest stages.")
+#===============================================================================
+# 17 Final integrity checks
+#===============================================================================
+
+# Die drei gewünschten Stufen müssen nach erfolgreicher Ausführung vorhanden
+# sein. Der alte Reliabilitäts-Ordner darf nicht mehr im aktiven Pretest-Ordner
+# liegen.
+expected_stage_folders <- c(
+  common_folder_pretest1,
+  common_folder,
+  reliability_folder
+)
+
+missing_stage_folders <- expected_stage_folders[
+  !fs::dir_exists(expected_stage_folders)
+]
+
+if (length(missing_stage_folders) > 0) {
+  stop(
+    "Interner Fehler: Nach der Vorbereitung fehlen erwartete Pretest-Ordner:\n",
+    paste0("  - ", missing_stage_folders, collapse = "\n")
+  )
+}
+
+if (fs::dir_exists(legacy_reliability_folder)) {
+  stop(
+    "Interner Fehler: Der alte Ordner 02_Reliabilitaets_Pretest liegt noch ",
+    "im aktiven 07_Pretest-Ordner."
+  )
+}
+
+# Bytegenaue Kontrolle über MD5-Prüfsummen: Gemeinsame Kodierung 1 muss nach
+# dem gesamten Skriptdurchlauf exakt denselben Dateiinhalt besitzen wie vorher.
+protected_pretest1_after <- snapshot_protected_folder(common_folder_pretest1)
+
+if (!identical(protected_pretest1_before, protected_pretest1_after)) {
+  stop(
+    "SICHERHEITSSTOPP: 01_Gemeinsame_Kodierung wurde während der ",
+    "Skriptausführung verändert. Bitte den Altbestand prüfen."
+  )
+}
+
+message(
+  "Integrity check passed: 01_Gemeinsame_Kodierung ist unverändert; ",
+  "02_Gemeinsame_Kodierung und 03_Reliabilitaets_Pretest wurden geprüft."
+)
+
+message("Finished preparing Pretest stages 2 and 3.")
