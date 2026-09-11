@@ -1,88 +1,27 @@
 ################################################################################
 # Project: Tagebuchstudie
-# File:    06_Pretest_Preparation_Pretest2.R
+# File:    07_Reli_Pretest_Ergaenzung_40.R
 #
 # Purpose:
-#   Ergänzt einen bereits begonnenen Pretest um eine zweite gemeinsame
-#   Kodierung und bereitet anschließend den Reliabilitäts-Pretest vor.
+#   Zieht 40 weitere, bislang in KEINEM Pretest verwendete Screenshots:
+#   - 10 Facebook
+#   - 10 Instagram
+#   - 10 TikTok
+#   - 10 X
 #
-#   1) Gemeinsame Kodierung 1 / Codebuch-Check
-#      - bereits aus Pretest 1 vorhanden
-#      - wird von diesem Skript NICHT neu erzeugt, gelöscht oder überschrieben
+#   Die bisherigen 200 Pretest-Faelle sind direkt im Skript hinterlegt:
+#   - 40 aeltere Pretest-Screenshots (als Dateinamen)
+#   - 60 aeltere Pretest-Screenshots (als screenshot_id)
+#   - 100 tatsaechlich verwendete Screenshots des Reliabilitaets-Pretests
 #
-#   2) Gemeinsame Kodierung 2 / zweiter Codebuch-Check
-#      - 40 neue Screenshots
-#      - 10 pro Plattform (Facebook, Instagram, TikTok, X)
-#      - identisches Sample für MF und LA
-#      - alle Screenshots aus Gemeinsamer Kodierung 1 sind ausgeschlossen
-#
-#   3) Reliabilitäts-Pretest
-#      - getrennte Kodierung desselben Samples durch MF und LA
-#      - 10 % des nach Ausschluss von Pretest 1 verfügbaren Screenshot-Samples
-#        oder maximal 100 Beiträge
-#      - wegen Plattformbalance immer gleiche Fallzahl pro Plattform
-#      - standardmäßig zusätzlich disjunkt von Gemeinsamer Kodierung 2
-#
-# Sampling:
-#   - stratifiziert nach Plattform
-#   - innerhalb jeder Plattform möglichst breite Streuung über Teilnehmende:
-#     zunächst höchstens ein Screenshot pro Person, bevor weitere Screenshots
-#     derselben Person gezogen werden
-#   - zufällige Auswahl bei reproduzierbarem Seed
-#   - Fälle aus Pretest 1 werden vor dem Sampling vollständig ausgeschlossen
-#   - Coding-Reihenfolge: Plattformblöcke Facebook -> Instagram -> TikTok -> X;
-#     innerhalb der Plattformen strikt alphabetisch nach screenshot_id
-#
-# Transfer ins finale Coding-Sheet:
-#   - screenshot_id wird NIEMALS verändert und ist der verbindliche Merge-Key.
-#   - Auch participant, study_day, photo und filename bleiben unverändert.
-#   - Die manuellen Coding-Spalten haben exakt dieselben Namen wie im finalen
-#     Coding-Sheet und können daher später per screenshot_id übernommen werden.
-#   - Nur filepath wird für neu erzeugte Stufen auf die Arbeitskopie in
-#     07_Pretest gesetzt; original_filepath bewahrt den regulären Pfad.
+#   Alte sample_manifest.csv-Dateien werden NICHT benoetigt.
+#   Ausschluss erfolgt robust ueber participant + study_day + photo.
 #
 # Output:
-#
-#   07_Pretest/
-#   ├── 01_Gemeinsame_Kodierung/       # BESTAND: bleibt unverändert
-#   │   ├── Screenshots/ ...
-#   │   ├── coding_sheet_MF.xlsx
-#   │   ├── coding_sheet_LA.xlsx
-#   │   └── sample_manifest.csv
-#   │
-#   ├── 02_Gemeinsame_Kodierung/       # NEU
-#   │   ├── Screenshots/
-#   │   │   ├── Facebook/
-#   │   │   ├── Instagram/
-#   │   │   ├── TikTok/
-#   │   │   └── X/
-#   │   ├── coding_sheet_MF.xlsx
-#   │   ├── coding_sheet_LA.xlsx
-#   │   └── sample_manifest.csv
-#   │
-#   └── 03_Reliabilitaets_Pretest/     # NEU
-#       ├── Screenshots/
-#       │   ├── Facebook/
-#       │   ├── Instagram/
-#       │   ├── TikTok/
-#       │   └── X/
-#       ├── coding_sheet_MF.xlsx
-#       ├── coding_sheet_LA.xlsx
-#       └── sample_manifest.csv
-#
-# Migration:
-#   - Falls aus einer früheren Skriptversion noch 07_Pretest/02_Reliabilitaets_Pretest
-#     existiert, wird dieser Ordner NICHT gelöscht, sondern vor dem Neuaufbau nach
-#     07_Pretest_Archiv/02_Reliabilitaets_Pretest_vor_Pretest2 verschoben.
-#
-# Input:
-#   01_Data/taeglicher_fragebogen_screenshot_upload.rds
-#   05_Participants/...  (von 02_Sort_Files.R erzeugte Screenshots)
-#
-# Notes:
-#   - Das Workbook-Layout orientiert sich an 03_Create_Coding_File.R.
-#   - Nach Beginn der manuellen Kodierung sind die erzeugten Excel-Dateien
-#     maßgeblich und sollten nicht erneut überschrieben werden.
+#   07_Pretest/04_Reliabilitaets_Pretest_Ergaenzung/
+#   ├── Screenshots/Facebook|Instagram|TikTok|X/
+#   ├── Reli_Pretest_Ergaenzung_40.xlsx
+#   └── sample_manifest.csv
 ################################################################################
 
 rm(list = ls())
@@ -103,16 +42,17 @@ pacman::p_load(
 source(file.path("02_Scripts", "00_Helpers.R"))
 
 
-#-------------------------------------------------------------------------------
-# User settings
-#-------------------------------------------------------------------------------
+#===============================================================================
+# 02 User settings
+#===============================================================================
 
 overwrite_existing <- FALSE
 
-# Reproduzierbares Sampling.
-sampling_seed <- 20260818L
+# Originaler Pretest-Seed war 20260818.
+# +2 wird fuer die neue, unabhaengige Ergaenzungsziehung verwendet.
+sampling_seed <- 20260820L
 
-coders <- c("MF", "LA")
+n_per_platform <- 10L
 
 platform_order <- c(
   "Facebook",
@@ -121,25 +61,89 @@ platform_order <- c(
   "X"
 )
 
-# Neue Stufe 2: zweite gemeinsame Kodierung.
-common_n_per_platform <- 10L
 
-# Stufe 3: Reliabilitäts-Pretest.
-reliability_share <- 0.10
-reliability_max_total <- 100L
+#===============================================================================
+# 03 Paths
+#===============================================================================
 
-# TRUE würde erlauben, dass Screenshots aus der neuen Gemeinsamen Kodierung 2
-# erneut im Reliabilitäts-Pretest auftauchen. Fälle aus Gemeinsamer Kodierung 1
-# bleiben unabhängig davon immer ausgeschlossen. Methodisch ist FALSE vorzuziehen.
-allow_overlap_between_stages <- FALSE
+data_file <- file.path(
+  "01_Data",
+  "taeglicher_fragebogen_screenshot_upload.rds"
+)
+
+participant_folder <- "05_Participants"
+
+output_folder <- file.path(
+  "07_Pretest",
+  "04_Reliabilitaets_Pretest_Ergaenzung"
+)
+
+screenshots_folder <- file.path(
+  output_folder,
+  "Screenshots"
+)
+
+output_excel <- file.path(
+  output_folder,
+  "Reli_Pretest_Ergaenzung_40.xlsx"
+)
+
+output_manifest <- file.path(
+  output_folder,
+  "sample_manifest.csv"
+)
 
 
-# Screenshots aus Pretest 1.
-# Die hier notierten IDs dienen nur als komfortable Eingabe. Für den eigentlichen
-# Ausschluss werden participant, study_day und photo extrahiert. Dadurch bleibt
-# der Ausschluss robust, falls derive_screenshot_index() die Tageskennung z. B.
-# als "Tag_4" statt "D4" in screenshot_id schreibt.
-pretest_1_screenshot_ids <- c(
+#===============================================================================
+# 04 Harte Ausschlusslisten: alle bisher verwendeten 200 Screenshots
+#===============================================================================
+
+# 40 fruehere Pretest-Faelle, in der damals vorliegenden Dateinamenform.
+used_files_40 <- c(
+  "02hc7dvz_Tag_2_Photo_1.png",
+  "4fkmpl0t_Tag_5_Photo_3.jpg",
+  "ankdmy5q_Tag_7_Photo_4.jpg",
+  "bwd6dx4v_Tag_1_Photo_3.jpg",
+  "gdz8g1x0_Tag_1_Photo_4.jpg",
+  "h4jncpan_Tag_2_Photo_3.jpg",
+  "i307pmik_Tag_4_Photo_2.png",
+  "q8squb4l_Tag_4_Photo_2.png",
+  "uon8ev51_Tag_2_Photo_1.png",
+  "v9r3ewpq_Tag_7_Photo_5.png",
+  "38kgvrw0_Tag_4_Photo_2.jpg",
+  "5lv2dy2y_Tag_2_Photo_1.jpg",
+  "8unf4xdd_Tag_6_Photo_2.jpg",
+  "9187xqbn_Tag_4_Photo_3.jpg",
+  "jf2ti2kd_Tag_1_Photo_1.png",
+  "lstkj97s_Tag_3_Photo_9.png",
+  "lx9qbc0c_Tag_7_Photo_10.jpg",
+  "mod7cwip_Tag_2_Photo_1.jpg",
+  "tfcrp7gt_Tag_6_Photo_5.jpg",
+  "uqk7jup4_Tag_4_Photo_2.jpg",
+  "0ckf7kww_Tag_2_Photo_8.jpg",
+  "0ckf7kww_Tag_4_Photo_3.jpg",
+  "aygez65h_Tag_2_Photo_3.jpg",
+  "bsffafmo_Tag_3_Photo_7.jpg",
+  "bsffafmo_Tag_6_Photo_7.jpg",
+  "lvaovr1a_Tag_2_Photo_3.jpg",
+  "lvaovr1a_Tag_5_Photo_1.jpg",
+  "u7xjqnf7_Tag_4_Photo_5.jpg",
+  "u7xjqnf7_Tag_7_Photo_3.jpg",
+  "v9r3ewpq_Tag_5_Photo_6.png",
+  "1j2qf7sb_Tag_6_Photo_3.jpg",
+  "4fkmpl0t_Tag_6_Photo_5.jpg",
+  "bsffafmo_Tag_4_Photo_8.jpg",
+  "bsffafmo_Tag_5_Photo_5.jpg",
+  "it5klml9_Tag_4_Photo_2.jpg",
+  "k401d9b5_Tag_4_Photo_2.png",
+  "kgfkzwyp_Tag_2_Photo_1.png",
+  "mhbm4oja_Tag_6_Photo_5.png",
+  "u7kjr0xs_Tag_7_Photo_3.png",
+  "y6mmse6u_Tag_3_Photo_5.png"
+)
+
+# 60 fruehere Pretest-Faelle.
+used_ids_60 <- c(
   "02hc7dvz_D4_P7",
   "4a45imez_D5_P1",
   "pdus4hpc_D4_P1",
@@ -202,234 +206,205 @@ pretest_1_screenshot_ids <- c(
   "u7kjr0xs_D5_P10"
 )
 
-if (length(pretest_1_screenshot_ids) != 60L) {
-  stop(
-    "Die Ausschlussliste für Pretest 1 muss exakt 60 Screenshot-IDs enthalten; ",
-    "aktuell sind es ", length(pretest_1_screenshot_ids), "."
-  )
+# 100 TATSAECHLICH im Reliabilitaets-Pretest verwendete Faelle.
+# Direkt aus dem durchgefuehrten Coding-Sheet uebernommen; keine Rekonstruktion
+# ueber Seeds oder alte Manifest-Dateien erforderlich.
+used_ids_reli_100 <- c(
+  "0w6mdaqz_D7_P1",
+  "1o0hlcpt_D2_P3",
+  "1px0s1da_D6_P8",
+  "3gp14hmn_D6_P3",
+  "4a45imez_D4_P4",
+  "4fkmpl0t_D4_P2",
+  "7pqnfmrv_D4_P6",
+  "9187xqbn_D6_P5",
+  "ankdmy5q_D1_P5",
+  "ckkc7lj5_D5_P1",
+  "cxeqy3f5_D7_P1",
+  "gxgszmi4_D5_P1",
+  "h6csyig3_D5_P4",
+  "it5klml9_D4_P3",
+  "k401d9b5_D1_P1",
+  "ounnv3ed_D7_P2",
+  "p74ygvvz_D3_P2",
+  "pdus4hpc_D2_P1",
+  "pp3eahpm_D4_P2",
+  "t4qz0p5t_D7_P2",
+  "uop0erjb_D5_P3",
+  "v9r3ewpq_D6_P4",
+  "yb8tcvqe_D3_P1",
+  "zqh6nr20_D3_P1",
+  "zyfro6j7_D5_P3",
+  "0ckf7kww_D6_P7",
+  "0w6mdaqz_D6_P4",
+  "19r0tw6b_D4_P4",
+  "1px0s1da_D3_P4",
+  "27ynjsrg_D2_P5",
+  "373cy2x4_D2_P8",
+  "d58yx6nv_D5_P1",
+  "du94csba_D2_P7",
+  "e3elj562_D3_P3",
+  "gdz8g1x0_D3_P3",
+  "h5v5lt6o_D6_P3",
+  "idcxwlrz_D1_P5",
+  "it5klml9_D2_P2",
+  "jf2ti2kd_D4_P1",
+  "jtih5moz_D4_P7",
+  "lcs3oz76_D1_P8",
+  "lstkj97s_D2_P7",
+  "lyj7657n_D3_P3",
+  "mkuybnhn_D6_P4",
+  "n6umsvm5_D5_P1",
+  "t2mz057i_D3_P1",
+  "u7xjqnf7_D2_P3",
+  "uqk7jup4_D3_P2",
+  "v9r3ewpq_D5_P4",
+  "xz4x508z_D4_P5",
+  "0ckf7kww_D2_P4",
+  "0ckf7kww_D5_P1",
+  "0ckf7kww_D5_P2",
+  "0ckf7kww_D6_P1",
+  "0ckf7kww_D7_P2",
+  "aygez65h_D4_P4",
+  "bsffafmo_D5_P7",
+  "bsffafmo_D5_P8",
+  "bsffafmo_D6_P8",
+  "bsffafmo_D7_P7",
+  "bsffafmo_D7_P8",
+  "lvaovr1a_D2_P2",
+  "lvaovr1a_D3_P4",
+  "lvaovr1a_D5_P2",
+  "lvaovr1a_D5_P3",
+  "lvaovr1a_D5_P4",
+  "u7xjqnf7_D3_P2",
+  "u7xjqnf7_D4_P4",
+  "u7xjqnf7_D6_P1",
+  "u7xjqnf7_D6_P2",
+  "v9r3ewpq_D1_P1",
+  "v9r3ewpq_D2_P1",
+  "v9r3ewpq_D2_P2",
+  "v9r3ewpq_D4_P5",
+  "v9r3ewpq_D4_P7",
+  "1j2qf7sb_D7_P1",
+  "1j2qf7sb_D7_P2",
+  "1j2qf7sb_D7_P4",
+  "4fkmpl0t_D6_P3",
+  "bsffafmo_D2_P1",
+  "bsffafmo_D4_P7",
+  "bsffafmo_D7_P5",
+  "it5klml9_D2_P3",
+  "it5klml9_D3_P5",
+  "it5klml9_D5_P4",
+  "k401d9b5_D2_P1",
+  "k401d9b5_D5_P1",
+  "k401d9b5_D5_P4",
+  "kgfkzwyp_D2_P4",
+  "kgfkzwyp_D3_P1",
+  "kgfkzwyp_D7_P2",
+  "mhbm4oja_D1_P3",
+  "mhbm4oja_D5_P5",
+  "mhbm4oja_D5_P9",
+  "u7kjr0xs_D4_P2",
+  "u7kjr0xs_D5_P1",
+  "u7kjr0xs_D7_P1",
+  "y6mmse6u_D4_P6",
+  "y6mmse6u_D5_P6",
+  "y6mmse6u_D7_P10"
+)
+
+if (
+  length(used_files_40) != 40L ||
+  length(used_ids_60) != 60L ||
+  length(used_ids_reli_100) != 100L
+) {
+  stop("Interner Fehler: Eine historische Ausschlussliste hat die falsche Laenge.")
 }
 
-pretest_1_exclusions <- tibble::tibble(
-  screenshot_id_pretest1 = pretest_1_screenshot_ids
+
+#-------------------------------------------------------------------------------
+# Historische IDs auf participant + study_day + photo vereinheitlichen
+#-------------------------------------------------------------------------------
+
+used_cases_40 <- tibble(
+  historical_id = used_files_40
 ) %>%
   tidyr::extract(
-    screenshot_id_pretest1,
+    historical_id,
     into = c("participant", "study_day", "photo"),
-    regex = "^(.*)_D([0-9]+)_P([0-9]+)$",
+    regex = "^(.*)_Tag_([0-9]+)_Photo_([0-9]+)\\.[^.]+$",
     remove = FALSE,
     convert = TRUE
   )
 
-if (anyNA(pretest_1_exclusions[c("participant", "study_day", "photo")])) {
+parse_dp_ids <- function(x) {
+  
+  tibble(
+    historical_id = x
+  ) %>%
+    tidyr::extract(
+      historical_id,
+      into = c("participant", "study_day", "photo"),
+      regex = "^(.*)_D([0-9]+)_P([0-9]+)$",
+      remove = FALSE,
+      convert = TRUE
+    )
+}
+
+used_cases <- bind_rows(
+  used_cases_40,
+  parse_dp_ids(used_ids_60),
+  parse_dp_ids(used_ids_reli_100)
+) %>%
+  transmute(
+    participant = as.character(participant),
+    study_day = as.integer(study_day),
+    photo = as.integer(photo)
+  )
+
+if (anyNA(used_cases)) {
+  stop("Mindestens eine historische Ausschluss-ID konnte nicht geparst werden.")
+}
+
+if (nrow(used_cases) != 200L) {
+  stop("Interner Fehler: Es wurden nicht exakt 200 historische Faelle erzeugt.")
+}
+
+if (anyDuplicated(used_cases) > 0) {
   stop(
-    "Mindestens eine Ausschluss-ID aus Pretest 1 entspricht nicht dem Muster ",
-    "participant_D[Tag]_P[Foto]."
+    "Interner Fehler: Die historischen Ausschlusslisten enthalten ",
+    "ueberlappende oder doppelte Faelle."
   )
 }
 
-if (anyDuplicated(pretest_1_exclusions[c("participant", "study_day", "photo")]) > 0) {
-  stop("Die Ausschlussliste für Pretest 1 enthält doppelte Fälle.")
-}
-
 
 #===============================================================================
-# 02 Paths
-#===============================================================================
-
-data_file <- file.path(
-  "01_Data",
-  "taeglicher_fragebogen_screenshot_upload.rds"
-)
-
-participant_folder <- "05_Participants"
-
-output_root <- "07_Pretest"
-
-# Bereits durchgeführter erster gemeinsamer Pretest. Dieser Ordner ist geschützt
-# und wird von diesem Skript niemals gelöscht oder überschrieben.
-common_folder_pretest1 <- file.path(
-  output_root,
-  "01_Gemeinsame_Kodierung"
-)
-
-# Neu zu erzeugender zweiter gemeinsamer Pretest.
-common_folder <- file.path(
-  output_root,
-  "02_Gemeinsame_Kodierung"
-)
-
-# Neu zu erzeugender Reliabilitäts-Pretest.
-reliability_folder <- file.path(
-  output_root,
-  "03_Reliabilitaets_Pretest"
-)
-
-# Alte Ordnerbezeichnung aus der vorherigen Skriptversion. Falls vorhanden,
-# wird sie archiviert, damit 07_Pretest anschließend genau die drei gewünschten
-# Stufen enthält, ohne Daten aus dem alten Ordner zu vernichten.
-legacy_reliability_folder <- file.path(
-  output_root,
-  "02_Reliabilitaets_Pretest"
-)
-
-archive_root <- "07_Pretest_Archiv"
-legacy_reliability_archive <- file.path(
-  archive_root,
-  "02_Reliabilitaets_Pretest_vor_Pretest2"
-)
-
-
-#===============================================================================
-# 03 Guard rails
+# 05 Guard rails
 #===============================================================================
 
 if (!file.exists(data_file)) {
   stop("Daily-RDS nicht gefunden: ", data_file)
 }
 
-fs::dir_create(output_root)
-
-# Inhaltssnapshot des geschützten ersten Pretests. Neben Dateinamen und Größen
-# werden MD5-Prüfsummen erfasst. Am Skriptende wird derselbe Snapshot erneut
-# erzeugt; jede inhaltliche Veränderung führt zu einem Fehler.
-snapshot_protected_folder <- function(folder) {
-  if (!fs::dir_exists(folder)) {
-    return(NULL)
-  }
+if (fs::dir_exists(output_folder)) {
   
-  files <- fs::dir_ls(
-    folder,
-    recurse = TRUE,
-    type = "file",
-    all = TRUE
-  )
-  
-  if (length(files) == 0) {
-    return(tibble::tibble(
-      relative_path = character(),
-      size = numeric(),
-      md5 = character()
-    ))
-  }
-  
-  tibble::tibble(
-    relative_path = fs::path_rel(files, start = folder),
-    size = as.numeric(fs::file_size(files)),
-    md5 = unname(tools::md5sum(files))
-  ) %>%
-    arrange(relative_path)
-}
-
-protected_pretest1_before <- snapshot_protected_folder(common_folder_pretest1)
-
-# 01_Gemeinsame_Kodierung ist Altbestand und ausdrücklich geschützt.
-# Auch overwrite_existing = TRUE betrifft diesen Ordner NICHT.
-if (fs::dir_exists(common_folder_pretest1)) {
-  message(
-    "Bestehender erster gemeinsamer Pretest bleibt unverändert: ",
-    common_folder_pretest1
-  )
-} else {
-  warning(
-    "Der erwartete Altbestand wurde nicht gefunden: ",
-    common_folder_pretest1,
-    ". Das Skript legt diesen Ordner bewusst nicht neu an."
-  )
-}
-
-# Migration der alten Reliabilitäts-Ordnerbezeichnung. Der Ordner wird nicht
-# gelöscht, sondern außerhalb von 07_Pretest archiviert.
-if (fs::dir_exists(legacy_reliability_folder)) {
-  if (fs::dir_exists(legacy_reliability_archive)) {
+  if (!overwrite_existing) {
     stop(
-      "Alter Reliabilitäts-Ordner gefunden, aber das Archivziel existiert ",
-      "bereits. Bitte Archivbestand prüfen:\n  ",
-      legacy_reliability_archive
+      "Der Ausgabeordner existiert bereits und wird nicht ueberschrieben:\n  ",
+      output_folder,
+      "\n\nFuer einen bewussten Neuaufbau overwrite_existing <- TRUE setzen."
     )
   }
   
-  fs::dir_create(archive_root)
-  
-  # fs besitzt keine exportierte Funktion dir_move(). Für Verzeichnisse
-  # verwenden wir deshalb file.rename(); Quelle und Archivziel liegen hier
-  # auf demselben Dateisystem. Der Rückgabewert wird explizit geprüft.
-  move_success <- file.rename(
-    from = legacy_reliability_folder,
-    to   = legacy_reliability_archive
-  )
-  
-  if (!isTRUE(move_success)) {
-    stop(
-      "Der alte Reliabilitäts-Ordner konnte nicht ins Archiv verschoben werden:\n",
-      "  Quelle: ", legacy_reliability_folder, "\n",
-      "  Ziel:   ", legacy_reliability_archive
-    )
-  }
-  
-  message(
-    "Alten Reliabilitäts-Ordner sicher archiviert unter: ",
-    legacy_reliability_archive
-  )
+  fs::dir_delete(output_folder)
 }
 
-# Nur die beiden NEU zu erzeugenden Stufen unterliegen overwrite_existing.
-# 01_Gemeinsame_Kodierung ist absichtlich nicht Teil dieser Liste.
-stage_folders <- c(
-  common_folder,
-  reliability_folder
-)
-
-if (overwrite_existing) {
-  purrr::walk(
-    stage_folders[fs::dir_exists(stage_folders)],
-    fs::dir_delete
-  )
-} else {
-  existing_stage_folders <- stage_folders[
-    fs::dir_exists(stage_folders)
-  ]
-  
-  if (length(existing_stage_folders) > 0) {
-    stop(
-      "Mindestens ein neu zu erzeugender Pretest-Ordner existiert bereits und ",
-      "wird nicht überschrieben:\n",
-      paste0("  - ", existing_stage_folders, collapse = "\n"),
-      "\n\nFür einen bewussten Neuaufbau von Stufe 2/3 ",
-      "overwrite_existing <- TRUE setzen. ",
-      "01_Gemeinsame_Kodierung bleibt dabei geschützt."
-    )
-  }
-}
+fs::dir_create(output_folder)
+fs::dir_create(screenshots_folder)
 
 
 #===============================================================================
-# 04 Small local helpers and labels
+# 06 Kleine Helper
 #===============================================================================
-
-label_code <- function(x, labels) {
-  dplyr::recode(
-    as.character(x),
-    !!!labels,
-    .default = "Invalid code",
-    .missing = NA_character_
-  )
-}
-
-
-collapse_interactions <- function(read, research, engagement) {
-  x <- c(
-    if (!is.na(read)       && read       == 1) "Read/watched thoroughly",
-    if (!is.na(research)   && research   == 1) "Sought further information",
-    if (!is.na(engagement) && engagement == 1) "Engaged with the post"
-  )
-  
-  if (length(x) == 0) {
-    NA_character_
-  } else {
-    paste(x, collapse = "; ")
-  }
-}
-
 
 platform_labels <- c(
   `1` = "Facebook",
@@ -462,45 +437,161 @@ interaction_labels <- c(
   `-1` = "No answer"
 )
 
+label_code <- function(x, labels) {
+  
+  dplyr::recode(
+    as.character(x),
+    !!!labels,
+    .default = NA_character_,
+    .missing = NA_character_
+  )
+}
+
+collapse_interactions <- function(read, research, engagement) {
+  
+  x <- c(
+    if (!is.na(read) && read == 1) "Read/watched thoroughly",
+    if (!is.na(research) && research == 1) "Sought further information",
+    if (!is.na(engagement) && engagement == 1) "Engaged with the post"
+  )
+  
+  if (length(x) == 0) {
+    NA_character_
+  } else {
+    paste(x, collapse = "; ")
+  }
+}
+
 
 #===============================================================================
-# 05 Daily data -> master coding data
+# 07 Gleiche Sampling-Logik wie im bisherigen Pretest
+#===============================================================================
+
+sample_participant_diverse <- function(data, n) {
+  
+  if (n <= 0) {
+    return(data[0, , drop = FALSE])
+  }
+  
+  if (nrow(data) < n) {
+    stop(
+      "Zu wenige Faelle in einem Plattform-Stratum: benoetigt ",
+      n,
+      ", vorhanden ",
+      nrow(data),
+      "."
+    )
+  }
+  
+  participant_order <- data %>%
+    distinct(participant) %>%
+    mutate(participant_random = runif(n()))
+  
+  data %>%
+    mutate(row_random = runif(n())) %>%
+    group_by(participant) %>%
+    arrange(row_random, .by_group = TRUE) %>%
+    mutate(within_participant_order = row_number()) %>%
+    ungroup() %>%
+    left_join(participant_order, by = "participant") %>%
+    arrange(
+      within_participant_order,
+      participant_random,
+      row_random
+    ) %>%
+    slice_head(n = n) %>%
+    select(
+      -within_participant_order,
+      -participant_random,
+      -row_random
+    )
+}
+
+sample_equal_platforms <- function(data, n_per_platform, seed) {
+  
+  set.seed(seed)
+  
+  availability <- data %>%
+    count(platform_reported, name = "N_available") %>%
+    tidyr::complete(
+      platform_reported = platform_order,
+      fill = list(N_available = 0L)
+    )
+  
+  insufficient <- availability %>%
+    filter(N_available < n_per_platform)
+  
+  if (nrow(insufficient) > 0) {
+    stop(
+      "Nicht genuegend ungenutzte Screenshots fuer 10 pro Plattform:\n",
+      paste0(
+        insufficient$platform_reported,
+        ": benoetigt ",
+        n_per_platform,
+        ", vorhanden ",
+        insufficient$N_available,
+        collapse = "\n"
+      )
+    )
+  }
+  
+  purrr::map_dfr(
+    platform_order,
+    function(current_platform) {
+      
+      data %>%
+        filter(platform_reported == current_platform) %>%
+        sample_participant_diverse(n_per_platform)
+    }
+  ) %>%
+    mutate(
+      platform_sort = match(platform_reported, platform_order)
+    ) %>%
+    arrange(
+      platform_sort,
+      screenshot_id
+    ) %>%
+    select(-platform_sort)
+}
+
+
+#===============================================================================
+# 08 Daily data -> master coding data
 #===============================================================================
 
 daily <- readRDS(data_file)
 
-missing_base <- setdiff(
-  c("personalParticipantCode", "scheduled"),
-  names(daily)
-)
-
-if (length(missing_base) > 0) {
-  stop(
-    "Benötigte Variablen fehlen: ",
-    paste(missing_base, collapse = ", ")
-  )
-}
-
-if (!any(stringr::str_detect(
-  names(daily),
-  "^daily_[0-9]+_screenshot$"
-))) {
-  stop("Keine Variablen nach dem Muster daily_[n]_screenshot gefunden.")
-}
-
-
-# Studientag, Foto-Nummer, Dateiname und ursprünglicher Pfad stammen aus
-# derselben Hilfsfunktion wie in 02_Sort_Files.R und 03_Create_Coding_File.R.
 coding_master <- derive_screenshot_index(
   daily,
   participant_folder = participant_folder
 )
 
+required_master_cols <- c(
+  "screenshot_id",
+  "participant",
+  "study_day",
+  "photo",
+  "filename",
+  "filepath",
+  "platform"
+)
+
+missing_master_cols <- setdiff(
+  required_master_cols,
+  names(coding_master)
+)
+
+if (length(missing_master_cols) > 0) {
+  stop(
+    "derive_screenshot_index() liefert nicht alle benoetigten Spalten: ",
+    paste(missing_master_cols, collapse = ", ")
+  )
+}
+
+# Felder, die fuer die kopierbare Coding-Tabelle gebraucht werden.
 expected_fields <- c(
-  "screenshot",
   "topic",
   "account",
-  "platform",
   "incidentality",
   "interaction_1",
   "interaction_2",
@@ -514,44 +605,40 @@ for (x in setdiff(expected_fields, names(coding_master))) {
   coding_master[[x]] <- NA
 }
 
-if (any(is.na(coding_master$participant))) {
-  stop("Mindestens ein Screenshot besitzt keinen gültigen Participant Code.")
-}
+optional_master_cols <- c(
+  "original_filename",
+  "screenshot_slot",
+  "submission_row",
+  "scheduled",
+  "committed"
+)
 
+for (x in setdiff(optional_master_cols, names(coding_master))) {
+  coding_master[[x]] <- NA
+}
 
 coding_master <- coding_master %>%
   mutate(
-    topic_participant   = clean_text(topic),
+    participant = as.character(participant),
+    study_day = as.integer(study_day),
+    photo = as.integer(photo),
+    
+    topic_participant = clean_text(topic),
     account_participant = clean_text(account),
     
-    platform_code      = na_if(clean_numeric(platform), -1),
+    platform_code = na_if(clean_numeric(platform), -1),
     incidentality_code = na_if(clean_numeric(incidentality), -1),
-    locality_code      = na_if(clean_numeric(locality), -1),
-    situation_code     = na_if(clean_numeric(situation), -1),
+    locality_code = na_if(clean_numeric(locality), -1),
+    situation_code = na_if(clean_numeric(situation), -1),
     
-    interaction_read_code       = clean_numeric(interaction_1),
-    interaction_research_code   = clean_numeric(interaction_2),
+    interaction_read_code = clean_numeric(interaction_1),
+    interaction_research_code = clean_numeric(interaction_2),
     interaction_engagement_code = clean_numeric(interaction_3),
     
-    platform_reported = label_code(
-      platform_code,
-      platform_labels
-    ),
-    
-    incidentality_label = label_code(
-      incidentality_code,
-      incidentality_labels
-    ),
-    
-    locality_label = label_code(
-      locality_code,
-      locality_labels
-    ),
-    
-    situation_label = label_code(
-      situation_code,
-      situation_labels
-    ),
+    platform_reported = label_code(platform_code, platform_labels),
+    incidentality_label = label_code(incidentality_code, incidentality_labels),
+    locality_label = label_code(locality_code, locality_labels),
+    situation_label = label_code(situation_code, situation_labels),
     
     interaction_read = label_code(
       interaction_read_code,
@@ -580,12 +667,8 @@ coding_master <- coding_master %>%
     startstop_raw = startstop,
     
     startstop_label = case_when(
-      str_to_lower(clean_text(startstop_raw)) %in%
-        c("true", "t", "1") ~ "Weiter",
-      
-      str_to_lower(clean_text(startstop_raw)) %in%
-        c("false", "f", "0") ~ "Stopp",
-      
+      str_to_lower(clean_text(startstop_raw)) %in% c("true", "t", "1") ~ "Weiter",
+      str_to_lower(clean_text(startstop_raw)) %in% c("false", "f", "0") ~ "Stopp",
       TRUE ~ NA_character_
     ),
     
@@ -595,538 +678,137 @@ coding_master <- coding_master %>%
 
 
 #===============================================================================
-# 06 Define the usable sampling pool
+# 09 Alle 200 alten Faelle ausschliessen
 #===============================================================================
 
-# Für den Pretest werden nur tatsächlich vorhandene Dateien mit eindeutig
-# zuordenbarer Plattform verwendet. Anschließend werden sämtliche Fälle aus
-# Pretest 1 ausgeschlossen. Die Bezugsmenge für das neue Sampling enthält damit
-# keine bereits in Pretest 1 verwendeten Screenshots.
-sampling_pool_before_pretest1_exclusion <- coding_master %>%
+sampling_pool <- coding_master %>%
   filter(
     file_exists %in% TRUE,
     platform_reported %in% platform_order
-  )
-
-# Robust gegen unterschiedliche Schreibweisen der screenshot_id (z. B. D4 vs.
-# Tag_4), weil über die kanonischen Komponenten gejoint wird.
-pretest1_matches <- sampling_pool_before_pretest1_exclusion %>%
-  semi_join(
-    pretest_1_exclusions,
-    by = c("participant", "study_day", "photo")
-  )
-
-sampling_pool <- sampling_pool_before_pretest1_exclusion %>%
+  ) %>%
   anti_join(
-    pretest_1_exclusions,
+    used_cases,
     by = c("participant", "study_day", "photo")
   )
 
-n_master_total <- nrow(coding_master)
-n_sampling_pool_before_pretest1_exclusion <- nrow(
-  sampling_pool_before_pretest1_exclusion
-)
-n_excluded_pretest1 <- nrow(pretest1_matches)
-n_sampling_pool <- nrow(sampling_pool)
-
-missing_pretest1_exclusions <- pretest_1_exclusions %>%
-  anti_join(
-    sampling_pool_before_pretest1_exclusion,
-    by = c("participant", "study_day", "photo")
-  )
-
-if (nrow(missing_pretest1_exclusions) > 0) {
-  message(
-    nrow(missing_pretest1_exclusions),
-    " Ausschluss-ID(s) aus Pretest 1 waren im aktuell nutzbaren Pool nicht ",
-    "vorhanden (z. B. wegen fehlender Datei/ungültiger Plattform oder ",
-    "geändertem Datenstand)."
-  )
+if (nrow(sampling_pool) == 0) {
+  stop("Nach Ausschluss der 200 bisherigen Pretest-Faelle bleibt kein Pool uebrig.")
 }
-
-n_excluded_missing_file <- sum(
-  coding_master$file_exists %in% FALSE
-)
-
-n_excluded_platform <- sum(
-  !coding_master$platform_reported %in% platform_order |
-    is.na(coding_master$platform_reported)
-)
-
-if (n_sampling_pool == 0) {
-  stop("Es gibt keine nutzbaren Screenshots für das Pretest-Sampling.")
-}
-
 
 platform_availability <- sampling_pool %>%
-  count(
-    platform_reported,
-    name = "N_available"
-  ) %>%
+  count(platform_reported, name = "N_available") %>%
   tidyr::complete(
     platform_reported = platform_order,
     fill = list(N_available = 0L)
   ) %>%
-  arrange(
-    match(platform_reported, platform_order)
-  )
+  arrange(match(platform_reported, platform_order))
+
+print(platform_availability)
 
 
 #===============================================================================
-# 07 Sampling helpers
+# 10 40 neue Faelle ziehen: exakt 10 je Plattform
 #===============================================================================
 
-# Zieht innerhalb einer Plattform möglichst teilnehmerdivers:
-# Runde 1 = maximal ein Screenshot je Person, Runde 2 = maximal der zweite usw.
-# Zufallszahlen bestimmen sowohl die Reihenfolge der Personen als auch die
-# Auswahl innerhalb einer Person.
-sample_participant_diverse <- function(data, n) {
-  
-  if (n <= 0) {
-    return(data[0, , drop = FALSE])
-  }
-  
-  if (nrow(data) < n) {
-    stop(
-      "Zu wenige Fälle in einem Plattform-Stratum: benötigt ",
-      n,
-      ", vorhanden ",
-      nrow(data),
-      "."
-    )
-  }
-  
-  participant_order <- data %>%
-    distinct(participant) %>%
-    mutate(
-      participant_random = runif(n())
-    )
-  
-  data %>%
-    mutate(
-      row_random = runif(n())
-    ) %>%
-    group_by(participant) %>%
-    arrange(
-      row_random,
-      .by_group = TRUE
-    ) %>%
-    mutate(
-      within_participant_order = row_number()
-    ) %>%
-    ungroup() %>%
-    left_join(
-      participant_order,
-      by = "participant"
-    ) %>%
-    arrange(
-      within_participant_order,
-      participant_random,
-      row_random
-    ) %>%
-    slice_head(n = n) %>%
-    select(
-      -within_participant_order,
-      -participant_random,
-      -row_random
-    )
-}
-
-
-sample_equal_platforms <- function(
-    data,
-    n_per_platform,
-    seed
-) {
-  
-  set.seed(seed)
-  
-  availability <- data %>%
-    count(
-      platform_reported,
-      name = "N_available"
-    ) %>%
-    tidyr::complete(
-      platform_reported = platform_order,
-      fill = list(N_available = 0L)
-    )
-  
-  insufficient <- availability %>%
-    filter(
-      N_available < n_per_platform
-    )
-  
-  if (nrow(insufficient) > 0) {
-    stop(
-      "Nicht genügend Screenshots für ein plattformbalanciertes Sample.\n",
-      paste0(
-        insufficient$platform_reported,
-        ": benötigt ",
-        n_per_platform,
-        ", vorhanden ",
-        insufficient$N_available,
-        collapse = "\n"
-      )
-    )
-  }
-  
-  selected <- purrr::map_dfr(
-    platform_order,
-    function(current_platform) {
-      
-      platform_data <- data %>%
-        filter(
-          platform_reported == current_platform
-        )
-      
-      sample_participant_diverse(
-        platform_data,
-        n_per_platform
-      )
-    }
-  )
-  
-  # Lineare Coding-Reihenfolge:
-  #   Facebook -> Instagram -> TikTok -> X.
-  # Innerhalb jedes Plattformblocks strikt alphabetisch nach screenshot_id.
-  # Die Ziehung selbst bleibt zufällig und teilnehmerdivers; nur die Reihenfolge
-  # des fertig gezogenen Samples wird hier deterministisch sortiert.
-  #
-  # WICHTIG: pretest_order ist nur eine Arbeitsreihenfolge. screenshot_id,
-  # filename und alle kanonischen Identifikatoren werden nicht verändert.
-  selected %>%
-    mutate(
-      platform_sort = match(platform_reported, platform_order)
-    ) %>%
-    arrange(
-      platform_sort,
-      screenshot_id
-    ) %>%
-    mutate(
-      pretest_order = row_number()
-    ) %>%
-    select(
-      -platform_sort
-    )
-}
-
-
-#===============================================================================
-# 08 Determine sample sizes
-#===============================================================================
-
-common_n_total <- common_n_per_platform * length(platform_order)
-
-# "10 % oder 100, whatever comes first".
-# Für exakt gleiche Plattformanteile wird auf das nächstkleinere Vielfache von
-# vier abgerundet.
-reliability_requested_total <- min(
-  floor(n_sampling_pool * reliability_share),
-  reliability_max_total
-)
-
-reliability_n_per_platform <- floor(
-  reliability_requested_total / length(platform_order)
-)
-
-reliability_n_total <- reliability_n_per_platform * length(platform_order)
-
-if (reliability_n_per_platform < 1) {
-  stop(
-    "Das verfügbare Sample ist zu klein für einen plattformbalancierten ",
-    "Reliabilitäts-Pretest nach der 10-%-Regel."
-  )
-}
-
-if (reliability_n_total < reliability_requested_total) {
-  message(
-    "Reliabilitäts-Pretest wird für exakte Plattformbalance von ",
-    reliability_requested_total,
-    " auf ",
-    reliability_n_total,
-    " Fälle abgerundet (",
-    reliability_n_per_platform,
-    " pro Plattform)."
-  )
-}
-
-
-#===============================================================================
-# 09 Draw Stage 2: second common coding sample
-#===============================================================================
-
-common_sample <- sample_equal_platforms(
+additional_sample <- sample_equal_platforms(
   sampling_pool,
-  n_per_platform = common_n_per_platform,
+  n_per_platform = n_per_platform,
   seed = sampling_seed
 ) %>%
   mutate(
-    pretest_stage = "Gemeinsame Kodierung 2"
+    # Die bestehende Reli-Tabelle hat 100 Zeilen.
+    pretest_order = 100L + row_number(),
+    pretest_stage = "Reliabilitaets-Pretest Ergaenzung"
   )
 
 
 #===============================================================================
-# 10 Draw Stage 3: reliability sample
+# 11 Sicherheitschecks
 #===============================================================================
 
-if (allow_overlap_between_stages) {
-  
-  reliability_pool <- sampling_pool
-  
-} else {
-  
-  reliability_pool <- sampling_pool %>%
-    filter(
-      !screenshot_id %in% common_sample$screenshot_id
-    )
+if (nrow(additional_sample) != 40L) {
+  stop("Interner Fehler: Ergaenzungssample enthaelt nicht exakt 40 Faelle.")
 }
 
-reliability_sample <- sample_equal_platforms(
-  reliability_pool,
-  n_per_platform = reliability_n_per_platform,
-  seed = sampling_seed + 1L
-) %>%
-  mutate(
-    pretest_stage = "Reliabilitäts-Pretest"
-  )
+platform_check <- additional_sample %>%
+  count(platform_reported)
 
-
-#-------------------------------------------------------------------------------
-# Identity checks for later transfer into the final coding sheet
-#-------------------------------------------------------------------------------
-# The pretest must remain merge-compatible with 03_Create_Coding_File.R.
-# screenshot_id is the canonical key. The other columns are checked as an
-# additional safeguard against accidental renaming/re-numbering.
-assert_sample_identity <- function(sample_data, master_data) {
-  
-  canonical_cols <- c(
-    "screenshot_id",
-    "participant",
-    "study_day",
-    "photo",
-    "filename",
-    "original_filename"
-  )
-  
-  reference <- master_data %>%
-    select(all_of(canonical_cols)) %>%
-    distinct()
-  
-  checked <- sample_data %>%
-    select(all_of(canonical_cols)) %>%
-    left_join(
-      reference,
-      by = "screenshot_id",
-      suffix = c("_pretest", "_master")
-    )
-  
-  if (any(is.na(checked$participant_master))) {
-    stop(
-      "Interner Fehler: Mindestens eine screenshot_id des Pretests existiert ",
-      "nicht im Master-Sample."
-    )
-  }
-  
-  compare_cols <- setdiff(canonical_cols, "screenshot_id")
-  
-  mismatch <- purrr::map_lgl(
-    compare_cols,
-    function(x) {
-      pretest_col <- checked[[paste0(x, "_pretest")]]
-      master_col  <- checked[[paste0(x, "_master")]]
-      
-      any(
-        dplyr::coalesce(as.character(pretest_col), "<NA>") !=
-          dplyr::coalesce(as.character(master_col), "<NA>")
-      )
-    }
-  )
-  
-  if (any(mismatch)) {
-    stop(
-      "Interner Fehler: Kanonische Screenshot-Identität wurde verändert: ",
-      paste(compare_cols[mismatch], collapse = ", ")
-    )
-  }
-  
-  invisible(TRUE)
-}
-
-
-assert_sample_identity(
-  common_sample,
-  coding_master
-)
-
-assert_sample_identity(
-  reliability_sample,
-  coding_master
-)
-
-
-# Verifiziert die gewünschte Arbeitsreihenfolge unabhängig von der Sampling-
-# Funktion nochmals explizit: Plattformblöcke in definierter Reihenfolge und
-# darin strikt alphabetisch nach screenshot_id.
-assert_platform_alphabetical_order <- function(sample_data) {
-  expected_ids <- sample_data %>%
-    mutate(
-      platform_sort = match(platform_reported, platform_order)
-    ) %>%
-    arrange(
-      platform_sort,
-      screenshot_id
-    ) %>%
-    pull(screenshot_id)
-  
-  if (!identical(sample_data$screenshot_id, expected_ids)) {
-    stop(
-      "Interner Fehler: Die Coding-Reihenfolge ist nicht Facebook -> ",
-      "Instagram -> TikTok -> X mit alphabetischer screenshot_id-Sortierung ",
-      "innerhalb der Plattformen."
-    )
-  }
-  
-  invisible(TRUE)
-}
-
-assert_platform_alphabetical_order(common_sample)
-assert_platform_alphabetical_order(reliability_sample)
-
-
-# Safety checks.
 if (
-  !allow_overlap_between_stages &&
-  any(
-    common_sample$screenshot_id %in%
-    reliability_sample$screenshot_id
+  nrow(platform_check) != 4L ||
+  any(platform_check$n != 10L)
+) {
+  stop("Interner Fehler: Ergaenzungssample enthaelt nicht exakt 10 Faelle pro Plattform.")
+}
+
+if (anyDuplicated(additional_sample$screenshot_id) > 0) {
+  stop("Interner Fehler: Doppelte screenshot_id im Ergaenzungssample.")
+}
+
+overlap_used <- additional_sample %>%
+  semi_join(
+    used_cases,
+    by = c("participant", "study_day", "photo")
   )
-) {
-  stop("Interner Fehler: Die beiden Pretest-Samples überlappen.")
-}
 
-for (sample_object in list(common_sample, reliability_sample)) {
-  
-  overlap_pretest1 <- sample_object %>%
-    semi_join(
-      pretest_1_exclusions,
-      by = c("participant", "study_day", "photo")
-    )
-  
-  if (nrow(overlap_pretest1) > 0) {
-    stop(
-      "Interner Fehler: Mindestens ein Screenshot aus Pretest 1 wurde erneut ",
-      "in das neue Sample gezogen."
-    )
-  }
-  
-  platform_counts <- sample_object %>%
-    count(platform_reported)
-  
-  if (
-    nrow(platform_counts) != length(platform_order) ||
-    dplyr::n_distinct(platform_counts$n) != 1
-  ) {
-    stop("Interner Fehler: Plattformbalance des Samples ist verletzt.")
-  }
-  
-  if (anyDuplicated(sample_object$screenshot_id) > 0) {
-    stop("Interner Fehler: Doppelte screenshot_id im Pretest-Sample.")
-  }
+if (nrow(overlap_used) > 0) {
+  stop(
+    "SICHERHEITSSTOPP: Mindestens ein gezogener Fall wurde bereits ",
+    "in einem frueheren Pretest verwendet."
+  )
 }
 
 
 #===============================================================================
-# 11 Copy sample files
+# 12 Screenshots kopieren
 #===============================================================================
 
-copy_pretest_files <- function(
-    sample_data,
-    stage_folder
-) {
+additional_sample$filepath <- NA_character_
+
+for (i in seq_len(nrow(additional_sample))) {
   
-  screenshots_folder <- file.path(
-    stage_folder,
-    "Screenshots"
+  current_platform <- additional_sample$platform_reported[i]
+  
+  destination_folder <- file.path(
+    screenshots_folder,
+    current_platform
   )
   
-  fs::dir_create(screenshots_folder)
+  fs::dir_create(destination_folder)
   
-  copied <- sample_data
+  source_file <- additional_sample$original_filepath[i]
   
-  # Der kanonische Screenshot-Key und filename bleiben unangetastet.
-  # Nur filepath wird auf die Arbeitskopie des Pretests umgebogen.
-  copied$filepath <- NA_character_
+  destination_file <- file.path(
+    destination_folder,
+    additional_sample$filename[i]
+  )
   
-  for (i in seq_len(nrow(copied))) {
-    
-    current_platform <- copied$platform_reported[i]
-    
-    destination_folder <- file.path(
-      screenshots_folder,
-      current_platform
-    )
-    
-    fs::dir_create(destination_folder)
-    
-    source_file <- copied$original_filepath[i]
-    
-    destination_file <- file.path(
-      destination_folder,
-      copied$filename[i]
-    )
-    
-    if (!fs::file_exists(source_file)) {
-      stop(
-        "Quelldatei beim Kopieren nicht gefunden: ",
-        source_file
-      )
-    }
-    
-    fs::file_copy(
-      source_file,
-      destination_file,
-      overwrite = overwrite_existing
-    )
-    
-    copied$filepath[i] <- destination_file
+  if (!fs::file_exists(source_file)) {
+    stop("Quelldatei beim Kopieren nicht gefunden: ", source_file)
   }
   
-  copied <- copied %>%
-    mutate(
-      file_exists = fs::file_exists(filepath)
-    )
+  fs::file_copy(
+    source_file,
+    destination_file,
+    overwrite = FALSE
+  )
   
-  if (!all(copied$file_exists %in% TRUE)) {
-    stop(
-      "Mindestens eine Pretest-Datei wurde nicht korrekt kopiert."
-    )
-  }
-  
-  copied
+  additional_sample$filepath[i] <- destination_file
+}
+
+additional_sample <- additional_sample %>%
+  mutate(
+    file_exists = fs::file_exists(filepath)
+  )
+
+if (!all(additional_sample$file_exists %in% TRUE)) {
+  stop("Mindestens eine Ergaenzungsdatei wurde nicht korrekt kopiert.")
 }
 
 
-fs::dir_create(common_folder)
-fs::dir_create(reliability_folder)
-
-common_sample <- copy_pretest_files(
-  common_sample,
-  common_folder
-)
-
-reliability_sample <- copy_pretest_files(
-  reliability_sample,
-  reliability_folder
-)
-
-
 #===============================================================================
-# 12 Coding-sheet structure
+# 13 Kopierbare Tabelle in derselben Struktur wie das Coding-Sheet
 #===============================================================================
 
-# screenshot_id bleibt exakt die ID aus derive_screenshot_index() und damit
-# identisch zum regulären/finalen Coding-Sheet. pretest_order ist ausschließlich
-# eine lineare Arbeitsreihenfolge innerhalb dieses Pretests.
 id_cols <- c(
   "pretest_order",
   "screenshot_id",
@@ -1187,692 +869,44 @@ technical_cols <- c(
   "committed"
 )
 
+additional_table <- additional_sample %>%
+  mutate(
+    public_rel_coded = NA_integer_,
+    advertisement_coded = NA_integer_,
+    topic_coded = NA_character_,
+    source_coded = NA_character_,
+    source_name_coded = NA_character_,
+    platform_coded = platform_reported,
+    media_format = NA_integer_,
+    notes = NA_character_,
+    coder = NA_character_,
+    coding_completed = FALSE,
+    coding_date = as.Date(NA)
+  ) %>%
+  select(
+    all_of(
+      c(
+        id_cols,
+        coding_cols,
+        visible_info_cols,
+        hidden_info_cols,
+        technical_cols
+      )
+    )
+  )
 
-codebook <- tribble(
-  ~Variable, ~Code, ~Category, ~Rule,
-  
-  "public_rel_coded", "1", "Publicly relevant",
-  "Information, opinion, evaluation, contextualization or action orientation with meaning beyond the private circle.",
-  
-  "public_rel_coded", "0", "Not publicly relevant",
-  "Purely private, personal, self-presentational, purely entertaining or purely commercial function without public reference.",
-  
-  "public_rel_coded", "-1", "Not assessable",
-  "Screenshot technically unusable or content not reliably assessable.",
-  
-  "advertisement_coded", "1", "Werbung/Anzeige",
-  "Bezahlte Plattformwerbung oder klar als Werbung/Anzeige/Sponsored gekennzeichneter Beitrag.",
-  
-  "advertisement_coded", "2", "Keine Werbung/Anzeige",
-  "Keine erkennbare bezahlte oder entsprechend gekennzeichnete Werbung/Anzeige.",
-  
-  "advertisement_coded", "99", "Sonstiges/nicht eindeutig",
-  "Werbestatus anhand des Screenshots nicht eindeutig bestimmbar oder sonstiger Grenzfall.",
-  
-  "topic_coded", "", "Main topic",
-  "Only if public_rel_coded = 1; per the topic codebook.",
-  
-  "source_coded", "", "Source type",
-  "Only if public_rel_coded = 1; per the source codebook.",
-  
-  "source_name_coded", "", "Concrete source",
-  "Only if public_rel_coded = 1; visible account/source name.",
-  
-  "platform_coded", "", "Verified platform",
-  "Pre-filled; correct if needed.",
-  
-  "media_format", "1", "Text/link-based",
-  "Native text post or standardized link/article preview; ignore the caption of an image/video post.",
-  
-  "media_format", "2", "Static visual format",
-  "Photo, illustration, graphic, meme, text card, infographic or purely static carousel.",
-  
-  "media_format", "3", "Moving audiovisual format",
-  "Video, reel, TikTok, GIF or animation; also with text overlays or subtitles.",
-  
-  "media_format", "4", "Mixed media format",
-  "Actual combination of static and moving media elements within the same post.",
-  
-  "media_format", "-1", "Not determinable",
-  "Post format cannot be reliably identified from the screenshot.",
-  
-  "notes", "", "Notes",
-  "Only for borderline cases or particularities.",
-  
-  "coder", "", "Coder",
-  "Initials or name.",
-  
-  "coding_completed", "TRUE/FALSE", "Coding completed",
-  "TRUE only after final review; for public_rel_coded = 0/-1 leave topic, source and format empty.",
-  
-  "coding_date", "", "Coding date",
-  "Date of the final coding."
+
+#===============================================================================
+# 14 Output
+#===============================================================================
+
+openxlsx::write.xlsx(
+  list(
+    Coding = additional_table
+  ),
+  file = output_excel,
+  overwrite = FALSE
 )
-
-
-#===============================================================================
-# 13 Workbook helper
-#===============================================================================
-
-create_pretest_workbook <- function(
-    sample_data,
-    coder_name,
-    stage_name,
-    output_excel
-) {
-  
-  coding_export <- sample_data %>%
-    mutate(
-      # Manual coding
-      public_rel_coded    = NA_integer_,
-      advertisement_coded = NA_integer_,
-      topic_coded         = NA_character_,
-      source_coded      = NA_character_,
-      source_name_coded = NA_character_,
-      platform_coded    = platform_reported,
-      media_format      = NA_integer_,
-      notes             = NA_character_,
-      coder             = coder_name,
-      coding_completed  = FALSE,
-      coding_date       = as.Date(NA)
-    ) %>%
-    select(
-      all_of(
-        c(
-          id_cols,
-          coding_cols,
-          visible_info_cols,
-          hidden_info_cols,
-          technical_cols
-        )
-      )
-    )
-  
-  #---------------------------------------------------------------------------
-  # Quality information
-  #---------------------------------------------------------------------------
-  
-  n_participant_days <- coding_export %>%
-    filter(
-      !is.na(participant),
-      !is.na(study_day)
-    ) %>%
-    distinct(
-      participant,
-      study_day
-    ) %>%
-    nrow()
-  
-  quality_summary <- tibble(
-    Indicator = c(
-      "Pretest stage",
-      "Coder",
-      "Screenshots total",
-      "Participants",
-      "Participant-days",
-      "Facebook screenshots",
-      "Instagram screenshots",
-      "TikTok screenshots",
-      "X screenshots",
-      "Files found",
-      "Files not found"
-    ),
-    
-    Value = c(
-      stage_name,
-      coder_name,
-      as.character(nrow(coding_export)),
-      as.character(
-        n_distinct(
-          coding_export$participant,
-          na.rm = TRUE
-        )
-      ),
-      as.character(n_participant_days),
-      as.character(sum(coding_export$platform_reported == "Facebook")),
-      as.character(sum(coding_export$platform_reported == "Instagram")),
-      as.character(sum(coding_export$platform_reported == "TikTok")),
-      as.character(sum(coding_export$platform_reported == "X")),
-      as.character(sum(coding_export$file_exists %in% TRUE)),
-      as.character(sum(coding_export$file_exists %in% FALSE))
-    )
-  )
-  
-  missing_files <- coding_export %>%
-    filter(
-      file_exists %in% FALSE
-    ) %>%
-    select(
-      screenshot_id,
-      participant,
-      study_day,
-      photo,
-      filename,
-      filepath
-    )
-  
-  #---------------------------------------------------------------------------
-  # Workbook
-  #---------------------------------------------------------------------------
-  
-  wb <- openxlsx::createWorkbook()
-  
-  openxlsx::addWorksheet(
-    wb,
-    "Coding",
-    gridLines = FALSE
-  )
-  
-  openxlsx::writeData(
-    wb,
-    "Coding",
-    coding_export,
-    withFilter = FALSE
-  )
-  
-  
-  id_idx <- match(
-    id_cols,
-    names(coding_export)
-  )
-  
-  coding_idx <- match(
-    coding_cols,
-    names(coding_export)
-  )
-  
-  visible_idx <- match(
-    visible_info_cols,
-    names(coding_export)
-  )
-  
-  hidden_idx <- match(
-    hidden_info_cols,
-    names(coding_export)
-  )
-  
-  technical_idx <- match(
-    technical_cols,
-    names(coding_export)
-  )
-  
-  
-  header_style <- function(fill) {
-    openxlsx::createStyle(
-      fgFill = fill,
-      textDecoration = "bold",
-      halign = "center",
-      valign = "center",
-      wrapText = TRUE,
-      border = "Bottom"
-    )
-  }
-  
-  
-  openxlsx::addStyle(
-    wb,
-    "Coding",
-    header_style("#DCE7EA"),
-    1,
-    id_idx,
-    gridExpand = TRUE
-  )
-  
-  openxlsx::addStyle(
-    wb,
-    "Coding",
-    header_style("#D5B47A"),
-    1,
-    coding_idx,
-    gridExpand = TRUE
-  )
-  
-  openxlsx::addStyle(
-    wb,
-    "Coding",
-    header_style("#E7EEEE"),
-    1,
-    c(visible_idx, hidden_idx),
-    gridExpand = TRUE
-  )
-  
-  openxlsx::addStyle(
-    wb,
-    "Coding",
-    header_style("#E1E1E1"),
-    1,
-    technical_idx,
-    gridExpand = TRUE
-  )
-  
-  
-  if (nrow(coding_export) > 0) {
-    
-    rows <- 2:(nrow(coding_export) + 1)
-    
-    # Coding block visually distinct.
-    openxlsx::addStyle(
-      wb,
-      "Coding",
-      openxlsx::createStyle(
-        fgFill = "#FFF7E8",
-        valign = "top",
-        wrapText = TRUE
-      ),
-      rows,
-      coding_idx,
-      gridExpand = TRUE,
-      stack = TRUE
-    )
-    
-    # Thick separators before Coding and visible Daily info.
-    openxlsx::addStyle(
-      wb,
-      "Coding",
-      openxlsx::createStyle(
-        border = "Left",
-        borderStyle = "thick",
-        borderColour = "#8A8A8A"
-      ),
-      1:(nrow(coding_export) + 1),
-      c(
-        min(coding_idx),
-        min(visible_idx)
-      ),
-      gridExpand = TRUE,
-      stack = TRUE
-    )
-    
-    openxlsx::addFilter(
-      wb,
-      "Coding",
-      rows = 1,
-      cols = seq_len(ncol(coding_export))
-    )
-    
-    validation <- c(
-      public_rel_coded    = '"1,0,-1"',
-      advertisement_coded = '"1,2,99"',
-      platform_coded      = '"Facebook,Instagram,TikTok,X"',
-      media_format     = '"1,2,3,4,-1"',
-      coding_completed = '"FALSE,TRUE"'
-    )
-    
-    purrr::iwalk(
-      validation,
-      ~ openxlsx::dataValidation(
-        wb,
-        "Coding",
-        cols = match(
-          .y,
-          names(coding_export)
-        ),
-        rows = rows,
-        type = "list",
-        value = .x
-      )
-    )
-    
-    # public_rel_coded as gate: 0/-1 grays out Topic, Source and Format.
-    rel_col <- match(
-      "public_rel_coded",
-      names(coding_export)
-    )
-    
-    rel_chr <- openxlsx::int2col(rel_col)
-    
-    for (rule in list(
-      list(value = 1,  fill = "#DDEBDD"),
-      list(value = 0,  fill = "#E6E6E6"),
-      list(value = -1, fill = "#F4E0C7")
-    )) {
-      
-      openxlsx::conditionalFormatting(
-        wb,
-        "Coding",
-        cols = rel_col,
-        rows = rows,
-        type = "expression",
-        rule = paste0(
-          "$",
-          rel_chr,
-          "2=",
-          rule$value
-        ),
-        style = openxlsx::createStyle(
-          fgFill = rule$fill
-        )
-      )
-    }
-    
-    gated_cols <- match(
-      c(
-        "topic_coded",
-        "source_coded",
-        "source_name_coded",
-        "media_format"
-      ),
-      names(coding_export)
-    )
-    
-    openxlsx::conditionalFormatting(
-      wb,
-      "Coding",
-      cols = gated_cols,
-      rows = rows,
-      type = "expression",
-      rule = paste0(
-        "$",
-        rel_chr,
-        "2<>1"
-      ),
-      style = openxlsx::createStyle(
-        fgFill = "#EFEFEF",
-        fontColour = "#999999"
-      )
-    )
-    
-    done_col <- match(
-      "coding_completed",
-      names(coding_export)
-    )
-    
-    done_chr <- openxlsx::int2col(done_col)
-    
-    openxlsx::conditionalFormatting(
-      wb,
-      "Coding",
-      cols = done_col,
-      rows = rows,
-      type = "expression",
-      rule = paste0(
-        "$",
-        done_chr,
-        "2=TRUE"
-      ),
-      style = openxlsx::createStyle(
-        fgFill = "#DDEBDD"
-      )
-    )
-  }
-  
-  
-  # Concise instructions directly in relevant headers.
-  openxlsx::writeComment(
-    wb,
-    "Coding",
-    match(
-      "public_rel_coded",
-      names(coding_export)
-    ),
-    1,
-    openxlsx::createComment(
-      paste0(
-        "1 = publicly relevant\n",
-        "0 = not publicly relevant\n",
-        "-1 = not assessable\n\n",
-        "For 0/-1 leave topic, source and format empty."
-      ),
-      author = "Codebook"
-    )
-  )
-  
-  openxlsx::writeComment(
-    wb,
-    "Coding",
-    match(
-      "advertisement_coded",
-      names(coding_export)
-    ),
-    1,
-    openxlsx::createComment(
-      paste0(
-        "1 = Werbung/Anzeige\n",
-        "2 = Keine Werbung/Anzeige\n",
-        "99 = Sonstiges/nicht eindeutig\n\n",
-        "Unabhängig von public_rel_coded codieren."
-      ),
-      author = "Codebook"
-    )
-  )
-  
-  
-  openxlsx::writeComment(
-    wb,
-    "Coding",
-    match(
-      "media_format",
-      names(coding_export)
-    ),
-    1,
-    openxlsx::createComment(
-      paste0(
-        "1 = text/link\n",
-        "2 = static visual\n",
-        "3 = moving/audiovisual\n",
-        "4 = static + moving\n",
-        "-1 = not determinable\n\n",
-        "Ignore the caption."
-      ),
-      author = "Codebook"
-    )
-  )
-  
-  
-  openxlsx::freezePane(
-    wb,
-    "Coding",
-    firstActiveRow = 2,
-    firstActiveCol = length(id_cols) + 1
-  )
-  
-  
-  widths <- c(
-    pretest_order = 12,
-    screenshot_id = 18,
-    participant = 14,
-    study_day = 9,
-    photo = 8,
-    filename = 28,
-    filepath = 42,
-    file_exists = 10,
-    public_rel_coded = 14,
-    advertisement_coded = 18,
-    topic_coded = 25,
-    source_coded = 27,
-    source_name_coded = 27,
-    platform_coded = 14,
-    media_format = 13,
-    notes = 32,
-    coder = 12,
-    coding_completed = 15,
-    coding_date = 12,
-    topic_participant = 28,
-    account_participant = 28,
-    platform_reported = 14
-  )
-  
-  purrr::iwalk(
-    widths,
-    ~ openxlsx::setColWidths(
-      wb,
-      "Coding",
-      match(
-        .y,
-        names(coding_export)
-      ),
-      .x
-    )
-  )
-  
-  # Analysis information stays in the same sheet but out of the coder's way.
-  openxlsx::setColWidths(
-    wb,
-    "Coding",
-    cols = c(
-      hidden_idx,
-      technical_idx
-    ),
-    widths = 12,
-    hidden = TRUE
-  )
-  
-  openxlsx::setRowHeights(
-    wb,
-    "Coding",
-    rows = 1,
-    heights = 34
-  )
-  
-  
-  #---------------------------------------------------------------------------
-  # Codebook
-  #---------------------------------------------------------------------------
-  
-  openxlsx::addWorksheet(
-    wb,
-    "Codebook",
-    gridLines = FALSE
-  )
-  
-  openxlsx::writeDataTable(
-    wb,
-    "Codebook",
-    codebook,
-    tableStyle = "TableStyleMedium2"
-  )
-  
-  openxlsx::freezePane(
-    wb,
-    "Codebook",
-    firstRow = TRUE
-  )
-  
-  openxlsx::setColWidths(
-    wb,
-    "Codebook",
-    1:3,
-    "auto"
-  )
-  
-  openxlsx::setColWidths(
-    wb,
-    "Codebook",
-    4,
-    70
-  )
-  
-  openxlsx::addStyle(
-    wb,
-    "Codebook",
-    openxlsx::createStyle(
-      wrapText = TRUE,
-      valign = "top"
-    ),
-    rows = 2:(nrow(codebook) + 1),
-    cols = 1:4,
-    gridExpand = TRUE
-  )
-  
-  
-  #---------------------------------------------------------------------------
-  # Quality
-  #---------------------------------------------------------------------------
-  
-  openxlsx::addWorksheet(
-    wb,
-    "Quality",
-    gridLines = FALSE
-  )
-  
-  openxlsx::writeDataTable(
-    wb,
-    "Quality",
-    quality_summary,
-    tableStyle = "TableStyleMedium2"
-  )
-  
-  if (nrow(missing_files) > 0) {
-    
-    start <- nrow(quality_summary) + 4
-    
-    openxlsx::writeData(
-      wb,
-      "Quality",
-      "Files not found",
-      startRow = start
-    )
-    
-    openxlsx::writeDataTable(
-      wb,
-      "Quality",
-      missing_files,
-      startRow = start + 1,
-      tableStyle = "TableStyleMedium2"
-    )
-  }
-  
-  openxlsx::setColWidths(
-    wb,
-    "Quality",
-    1:10,
-    "auto"
-  )
-  
-  
-  #---------------------------------------------------------------------------
-  # Save
-  #---------------------------------------------------------------------------
-  
-  openxlsx::saveWorkbook(
-    wb,
-    output_excel,
-    overwrite = overwrite_existing
-  )
-  
-  invisible(coding_export)
-}
-
-
-#===============================================================================
-# 14 Create the four coding sheets
-#===============================================================================
-
-for (current_coder in coders) {
-  
-  create_pretest_workbook(
-    common_sample,
-    coder_name = current_coder,
-    stage_name = "Gemeinsame Kodierung 2",
-    output_excel = file.path(
-      common_folder,
-      paste0(
-        "coding_sheet_",
-        current_coder,
-        ".xlsx"
-      )
-    )
-  )
-  
-  create_pretest_workbook(
-    reliability_sample,
-    coder_name = current_coder,
-    stage_name = "Reliabilitäts-Pretest",
-    output_excel = file.path(
-      reliability_folder,
-      paste0(
-        "coding_sheet_",
-        current_coder,
-        ".xlsx"
-      )
-    )
-  )
-}
-
-
-#===============================================================================
-# 15 Save sampling manifests
-#===============================================================================
 
 manifest_cols <- c(
   "pretest_order",
@@ -1887,161 +921,30 @@ manifest_cols <- c(
 )
 
 readr::write_csv(
-  common_sample %>%
-    arrange(pretest_order) %>%
-    select(
-      all_of(manifest_cols)
-    ),
-  file.path(
-    common_folder,
-    "sample_manifest.csv"
-  )
-)
-
-readr::write_csv(
-  reliability_sample %>%
-    arrange(pretest_order) %>%
-    select(
-      all_of(manifest_cols)
-    ),
-  file.path(
-    reliability_folder,
-    "sample_manifest.csv"
-  )
+  additional_sample %>%
+    select(all_of(manifest_cols)),
+  output_manifest
 )
 
 
 #===============================================================================
-# 16 Console summary
+# 15 Finale Kontrolle
 #===============================================================================
-
-common_participants <- n_distinct(
-  common_sample$participant,
-  na.rm = TRUE
-)
-
-reliability_participants <- n_distinct(
-  reliability_sample$participant,
-  na.rm = TRUE
-)
-
-overlap_n <- length(
-  intersect(
-    common_sample$screenshot_id,
-    reliability_sample$screenshot_id
-  )
-)
-
 
 cat(
-  "\nPRETEST PREPARATION COMPLETED\n",
+  "\nRELI-PRETEST ERGAENZUNG COMPLETED\n",
   "========================================\n",
-  "Available master screenshots:       ", n_master_total, "\n",
-  "Usable pool before Pretest-1 excl.: ", n_sampling_pool_before_pretest1_exclusion, "\n",
-  "Excluded from Pretest 1:            ", n_excluded_pretest1, " / ",
-  nrow(pretest_1_exclusions), " requested\n",
-  "Usable sampling pool after excl.:   ", n_sampling_pool, "\n",
-  "Excluded because file is missing:   ", n_excluded_missing_file, "\n",
-  "Excluded because platform invalid:  ", n_excluded_platform, "\n",
-  "\n",
-  "STAGE 2 – COMMON CODING 2\n",
-  "Screenshots:                        ", nrow(common_sample), "\n",
-  "Per platform:                       ", common_n_per_platform, "\n",
-  "Participants represented:           ", common_participants, "\n",
-  "\n",
-  "STAGE 3 – RELIABILITY PRETEST\n",
-  "10% / 100 requested before balance: ", reliability_requested_total, "\n",
-  "Screenshots after platform balance: ", reliability_n_total, "\n",
-  "Per platform:                       ", reliability_n_per_platform, "\n",
-  "Participants represented:           ", reliability_participants, "\n",
-  "\n",
-  "Overlap between new stages 2/3:     ", overlap_n, "\n",
-  "Merge key for final coding sheet:   screenshot_id\n",
-  "Coding order:                       Facebook -> Instagram -> TikTok -> X; alphabetical within platform\n",
-  "Protected existing folder:          ", common_folder_pretest1, "\n",
-  "Output folder:                      ", output_root, "\n",
+  "Historisch ausgeschlossen: 200\n",
+  "Neue Screenshots gesamt:   ", nrow(additional_sample), "\n",
+  "Facebook:                  ", sum(additional_sample$platform_reported == "Facebook"), "\n",
+  "Instagram:                 ", sum(additional_sample$platform_reported == "Instagram"), "\n",
+  "TikTok:                    ", sum(additional_sample$platform_reported == "TikTok"), "\n",
+  "X:                         ", sum(additional_sample$platform_reported == "X"), "\n",
+  "Ueberschneidung alt:       ", nrow(overlap_used), "\n",
+  "Excel:                     ", output_excel, "\n",
   sep = ""
 )
 
-
-cat(
-  "\nPlatform availability before sampling:\n"
-)
-
-print(platform_availability)
-
-
-cat(
-  "\nStage 2 (Common Coding 2) distribution:\n"
-)
-
-print(
-  common_sample %>%
-    count(
-      platform_reported,
-      name = "N"
-    )
-)
-
-
-cat(
-  "\nStage 3 (Reliability Pretest) distribution:\n"
-)
-
-print(
-  reliability_sample %>%
-    count(
-      platform_reported,
-      name = "N"
-    )
-)
-
-
-#===============================================================================
-# 17 Final integrity checks
-#===============================================================================
-
-# Die drei gewünschten Stufen müssen nach erfolgreicher Ausführung vorhanden
-# sein. Der alte Reliabilitäts-Ordner darf nicht mehr im aktiven Pretest-Ordner
-# liegen.
-expected_stage_folders <- c(
-  common_folder_pretest1,
-  common_folder,
-  reliability_folder
-)
-
-missing_stage_folders <- expected_stage_folders[
-  !fs::dir_exists(expected_stage_folders)
-]
-
-if (length(missing_stage_folders) > 0) {
-  stop(
-    "Interner Fehler: Nach der Vorbereitung fehlen erwartete Pretest-Ordner:\n",
-    paste0("  - ", missing_stage_folders, collapse = "\n")
-  )
-}
-
-if (fs::dir_exists(legacy_reliability_folder)) {
-  stop(
-    "Interner Fehler: Der alte Ordner 02_Reliabilitaets_Pretest liegt noch ",
-    "im aktiven 07_Pretest-Ordner."
-  )
-}
-
-# Bytegenaue Kontrolle über MD5-Prüfsummen: Gemeinsame Kodierung 1 muss nach
-# dem gesamten Skriptdurchlauf exakt denselben Dateiinhalt besitzen wie vorher.
-protected_pretest1_after <- snapshot_protected_folder(common_folder_pretest1)
-
-if (!identical(protected_pretest1_before, protected_pretest1_after)) {
-  stop(
-    "SICHERHEITSSTOPP: 01_Gemeinsame_Kodierung wurde während der ",
-    "Skriptausführung verändert. Bitte den Altbestand prüfen."
-  )
-}
-
 message(
-  "Integrity check passed: 01_Gemeinsame_Kodierung ist unverändert; ",
-  "02_Gemeinsame_Kodierung und 03_Reliabilitaets_Pretest wurden geprüft."
+  "Safety check passed: alle 40 neuen Faelle sind disjunkt zu den 200 bisherigen."
 )
-
-message("Finished preparing Pretest stages 2 and 3.")

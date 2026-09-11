@@ -10,7 +10,7 @@
 # Outputs:
 #   03_Output/Screening_Results.xlsx
 #   03_Output/screening_prepared.rds
-#   optional: vier Screening-Grafiken in 04_Figures/
+#   optional: sieben Screening-Grafiken in 04_Figures/
 ################################################################################
 
 rm(list = ls())
@@ -203,6 +203,224 @@ screening <- screening %>%
       ordered_result = TRUE
     )
   )
+
+
+#===============================================================================
+# 03a Detailed sample description: console
+#===============================================================================
+# Wird bewusst vor den inhaltlichen Screening-Analysen ausgegeben. Prozentwerte
+# kategorialer Variablen beziehen sich jeweils auf die gültigen Antworten.
+
+print_sample_frequency <- function(data, variable, label) {
+  n_valid <- sum(!is.na(data[[variable]]))
+  n_missing <- sum(is.na(data[[variable]]))
+  
+  cat(
+    "\n", label,
+    " (valid n = ", n_valid,
+    "; missing = ", n_missing, "):\n",
+    sep = ""
+  )
+  
+  data %>%
+    filter(!is.na(.data[[variable]])) %>%
+    count(Category = .data[[variable]], .drop = FALSE) %>%
+    mutate(
+      Percent = round(100 * n / n_valid, 1),
+      `n (%)` = paste0(n, " (", Percent, " %)")
+    ) %>%
+    select(Category, `n (%)`) %>%
+    print(n = Inf)
+}
+
+age_valid <- screening$intro_age_num[!is.na(screening$intro_age_num)]
+usage_valid <- screening$intro_intensity[!is.na(screening$intro_intensity)]
+
+platform_sample <- purrr::imap_dfr(
+  c(
+    Facebook = "intro_freq_facebook",
+    Instagram = "intro_freq_instagram",
+    TikTok = "intro_freq_tiktok",
+    X = "intro_freq_x"
+  ),
+  function(variable, platform) {
+    x <- screening[[variable]]
+    n_valid <- sum(!is.na(x))
+    n_weekly <- sum(x >= 5, na.rm = TRUE)
+    n_daily <- sum(x >= 7, na.rm = TRUE)
+    
+    tibble(
+      Platform = platform,
+      Valid_N = n_valid,
+      Weekly = paste0(n_weekly, " (", round(100 * n_weekly / n_valid, 1), " %)"),
+      Daily = paste0(n_daily, " (", round(100 * n_daily / n_valid, 1), " %)")
+    )
+  }
+)
+
+cat(
+  "\n============================================================\n",
+  "SCREENING SAMPLE DESCRIPTION\n",
+  "============================================================\n",
+  "Participants: ", nrow(screening), "\n",
+  "Age: valid n = ", length(age_valid),
+  "; missing = ", sum(is.na(screening$intro_age_num)),
+  "; M = ", round(mean(age_valid), 2),
+  "; SD = ", round(sd(age_valid), 2),
+  "; Median = ", round(median(age_valid), 2),
+  "; IQR = ", round(IQR(age_valid), 2),
+  "; Range = ", min(age_valid), "–", max(age_valid), "\n",
+  "Usage intensity (1–7): valid n = ", length(usage_valid),
+  "; missing = ", sum(is.na(screening$intro_intensity)),
+  "; M = ", round(mean(usage_valid), 2),
+  "; SD = ", round(sd(usage_valid), 2),
+  "; Median = ", round(median(usage_valid), 2), "\n",
+  sep = ""
+)
+
+print_sample_frequency(screening, "age_group", "Age groups")
+print_sample_frequency(screening, "gender", "Gender")
+print_sample_frequency(screening, "education", "Education")
+print_sample_frequency(screening, "education_three_level", "Education (3 levels)")
+print_sample_frequency(screening, "context_local", "Typical spatial context")
+print_sample_frequency(screening, "context_social", "Typical social context")
+
+cat("\nPlatform use (weekly/daily):\n")
+print(platform_sample, n = Inf)
+
+cat("============================================================\n\n")
+
+
+#===============================================================================
+# 03b Figures: sample characteristics
+#===============================================================================
+# Die bisherigen Screening-Grafiken enthalten keine Soziodemografie. Ergänzt
+# werden daher Alter, Geschlecht und Bildung; vorhandene Analyseplots bleiben.
+
+if (create_figures) {
+  
+  age_mean <- mean(age_valid)
+  
+  figure_sample_age <- screening %>%
+    filter(!is.na(intro_age_num)) %>%
+    ggplot(aes(x = intro_age_num)) +
+    geom_histogram(
+      binwidth = 2,
+      boundary = 60,
+      fill = unname(project_colors["primary"]),
+      colour = unname(project_colors["white"]),
+      linewidth = 0.4
+    ) +
+    geom_vline(
+      xintercept = age_mean,
+      linetype = "dashed",
+      linewidth = 0.8,
+      colour = unname(project_colors["accent"])
+    ) +
+    annotate(
+      "text",
+      x = age_mean,
+      y = Inf,
+      label = paste0("M = ", round(age_mean, 1)),
+      vjust = 1.5,
+      hjust = -0.1,
+      fontface = "bold",
+      colour = unname(project_colors["accent"])
+    ) +
+    labs(
+      title = "Age distribution",
+      subtitle = paste0("Screening analysis sample; N = ", nrow(screening)),
+      x = "Age in years",
+      y = "Participants"
+    ) +
+    theme_project(base_size = 12, legend_position = "none")
+  
+  save_project_plot(
+    figure_sample_age,
+    file.path(figure_folder, "Screening_Sample_Age.png"),
+    width = 7.4,
+    height = 4.7
+  )
+  
+  
+  gender_plot_data <- screening %>%
+    filter(!is.na(gender)) %>%
+    count(gender, name = "N") %>%
+    mutate(
+      Percent = 100 * N / sum(N),
+      Label = paste0(N, " (", round(Percent, 1), " %)")
+    )
+  
+  figure_sample_gender <- gender_plot_data %>%
+    ggplot(aes(x = gender, y = N)) +
+    geom_col(
+      width = 0.64,
+      fill = unname(project_colors["primary"])
+    ) +
+    geom_text(
+      aes(label = Label),
+      vjust = -0.45,
+      fontface = "bold",
+      colour = unname(project_colors["dark"])
+    ) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+    labs(
+      title = "Gender distribution",
+      subtitle = paste0("Valid responses; n = ", sum(gender_plot_data$N)),
+      x = NULL,
+      y = "Participants"
+    ) +
+    theme_project(base_size = 12, legend_position = "none") +
+    theme(panel.grid.major.x = element_blank())
+  
+  save_project_plot(
+    figure_sample_gender,
+    file.path(figure_folder, "Screening_Sample_Gender.png"),
+    width = 6.8,
+    height = 4.7
+  )
+  
+  
+  education_plot_data <- screening %>%
+    filter(!is.na(education)) %>%
+    count(education, name = "N") %>%
+    mutate(
+      Percent = 100 * N / sum(N),
+      Label = paste0(N, " (", round(Percent, 1), " %)")
+    )
+  
+  figure_sample_education <- education_plot_data %>%
+    ggplot(aes(
+      x = N,
+      y = forcats::fct_reorder(education, N)
+    )) +
+    geom_col(
+      width = 0.64,
+      fill = unname(project_colors["primary"])
+    ) +
+    geom_text(
+      aes(label = Label),
+      hjust = -0.12,
+      fontface = "bold",
+      colour = unname(project_colors["dark"])
+    ) +
+    scale_x_continuous(expand = expansion(mult = c(0, 0.28))) +
+    labs(
+      title = "Educational attainment",
+      subtitle = paste0("Valid responses; n = ", sum(education_plot_data$N)),
+      x = "Participants",
+      y = NULL
+    ) +
+    theme_project(base_size = 11.5, legend_position = "none") +
+    theme(panel.grid.major.y = element_blank())
+  
+  save_project_plot(
+    figure_sample_education,
+    file.path(figure_folder, "Screening_Sample_Education.png"),
+    width = 9.2,
+    height = 5.8
+  )
+}
 
 
 #===============================================================================
