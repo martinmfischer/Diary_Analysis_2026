@@ -1,3 +1,8 @@
+# Separater Vorbereitungsschritt 02: gespeicherte Pretest-Urteile vergleichen
+# Eingabe: drei Coding Sheets unter 07_Pretest (LA, MF, LG)
+# Ausgabe: 07_Pretest/Reli_Pretest_Ergebnisse_icr.xlsx
+# Rechenaufwendiger Bootstrap; für normale Berichtsläufe nicht erneut notwendig
+
 # ============================================================
 # Reli-Pretest: Intercoder-Reliabilitaet
 # 3 Codierende | nominale Kategorien | Krippendorffs Alpha via icr
@@ -64,17 +69,16 @@ if (!all(file.exists(input_files))) {
 }
 
 read_coder <- function(path, coder_name) {
-  
   x <- readxl::read_excel(path, sheet = "Coding")
   needed <- c("screenshot_id", vars)
-  
+
   if (!all(needed %in% names(x))) {
     stop(
       basename(path), ": fehlende Spalten: ",
       paste(setdiff(needed, names(x)), collapse = ", ")
     )
   }
-  
+
   x %>%
     select(all_of(needed)) %>%
     mutate(
@@ -91,13 +95,12 @@ coder_data <- Map(
 names(coder_data) <- coders
 
 for (i in seq_along(coder_data)) {
-  
   x <- coder_data[[i]]
-  
+
   if (anyNA(x$screenshot_id)) {
     stop("Fehlende screenshot_id bei ", coders[i])
   }
-  
+
   if (anyDuplicated(x$screenshot_id)) {
     stop("Doppelte screenshot_id bei ", coders[i])
   }
@@ -141,8 +144,8 @@ public_ok <- ratings %>%
     screenshot_id,
     all_public =
       .data$LA == "1" &
-      .data$MF == "1" &
-      .data$LG == "1"
+        .data$MF == "1" &
+        .data$LG == "1"
   )
 
 ratings <- ratings %>%
@@ -154,43 +157,40 @@ ratings <- ratings %>%
 # ------------------------------------------------------------
 
 get_matrix <- function(var_name) {
-  
   # .env$var_name ist wichtig: verhindert dplyr-Data-Mask-Namenskonflikte.
   x <- ratings %>%
     filter(.data$variable == .env$var_name)
-  
+
   if (var_name %in% conditional_vars) {
     x <- x %>%
       filter(.data$all_public %in% TRUE)
   }
-  
+
   m <- x %>%
     select(all_of(coders)) %>%
     as.matrix()
-  
+
   rownames(m) <- x$screenshot_id
   m
 }
 
 pair_agreement <- function(m, coder_a, coder_b) {
-  
   ok <- !is.na(m[, coder_a]) & !is.na(m[, coder_b])
-  
+
   if (!any(ok)) {
     return(NA_real_)
   }
-  
+
   mean(m[ok, coder_a] == m[ok, coder_b])
 }
 
 all_three_agreement <- function(m) {
-  
   ok <- stats::complete.cases(m)
-  
+
   if (!any(ok)) {
     return(NA_real_)
   }
-  
+
   mean(
     apply(
       m[ok, , drop = FALSE],
@@ -201,26 +201,23 @@ all_three_agreement <- function(m) {
 }
 
 dominant_rating_share <- function(m) {
-  
   x <- as.vector(m)
   x <- x[!is.na(x)]
-  
+
   if (length(x) == 0) {
     return(NA_real_)
   }
-  
+
   as.numeric(max(prop.table(table(x))))
 }
 
 fit_alpha <- function(m, var_name) {
-  
   # Einheiten mit < 2 Ratings tragen nicht zu Krippendorffs Alpha bei.
   m_alpha <- m[
-    rowSums(!is.na(m)) >= 2,
-    ,
+    rowSums(!is.na(m)) >= 2, ,
     drop = FALSE
   ]
-  
+
   if (nrow(m_alpha) == 0) {
     return(c(
       alpha = NA_real_,
@@ -229,10 +226,10 @@ fit_alpha <- function(m, var_name) {
       observed_agreement = NA_real_
     ))
   }
-  
+
   observed_values <- as.vector(m_alpha)
   observed_values <- observed_values[!is.na(observed_values)]
-  
+
   # Bei nur einer Kategorie ist De = 0:
   # rohe Uebereinstimmung = 1, chance-korrigiertes Alpha nicht informativ.
   if (length(unique(observed_values)) < 2) {
@@ -243,7 +240,7 @@ fit_alpha <- function(m, var_name) {
       observed_agreement = 1
     ))
   }
-  
+
   # icr: Codierende = Zeilen, Codiereinheiten = Spalten.
   fit <- icr::krippalpha(
     t(m_alpha),
@@ -254,16 +251,16 @@ fit_alpha <- function(m, var_name) {
     cores = cores,
     seed = seed
   )
-  
+
   boot <- fit$bootstraps[is.finite(fit$bootstraps)]
-  
+
   if (length(boot) < nboot * 0.95) {
     warning(
       var_name, ": nur ", length(boot), " von ", nboot,
       " Bootstrap-Replikationen gueltig."
     )
   }
-  
+
   if (length(boot) >= 2) {
     alpha_tail <- (1 - conf_level) / 2
     ci <- stats::quantile(
@@ -274,27 +271,32 @@ fit_alpha <- function(m, var_name) {
   } else {
     ci <- c(NA_real_, NA_real_)
   }
-  
+
   c(
     alpha = fit$alpha,
     ci_low = ci[1],
     ci_high = ci[2],
-    
+
     # Bei nominaler Metrik: 1 - beobachtete Disagreement-Rate.
     observed_agreement = 1 - fit$D_o
   )
 }
 
 issue_type <- function(x) {
-  
   observed <- x[!is.na(x)]
   disagreement <- length(observed) >= 2 && length(unique(observed)) > 1
   has_missing <- anyNA(x)
-  
-  if (disagreement && has_missing) return("Dissens + Missing")
-  if (disagreement) return("Dissens")
-  if (has_missing) return("Missing")
-  
+
+  if (disagreement && has_missing) {
+    return("Dissens + Missing")
+  }
+  if (disagreement) {
+    return("Dissens")
+  }
+  if (has_missing) {
+    return("Missing")
+  }
+
   NA_character_
 }
 
@@ -304,10 +306,9 @@ issue_type <- function(x) {
 # ------------------------------------------------------------
 
 analyse_variable <- function(var_name) {
-  
   m <- get_matrix(var_name)
   alpha_stats <- fit_alpha(m, var_name)
-  
+
   summary <- tibble(
     variable = var_name,
     n_eligible_units = nrow(m),
@@ -324,10 +325,10 @@ analyse_variable <- function(var_name) {
     ci95_high = unname(alpha_stats["ci_high"]),
     dominant_rating_share = dominant_rating_share(m)
   )
-  
+
   issues <- apply(m, 1, issue_type)
   keep <- !is.na(issues)
-  
+
   if (any(keep)) {
     problems <- tibble(
       variable = var_name,
@@ -347,7 +348,7 @@ analyse_variable <- function(var_name) {
       issue = character()
     )
   }
-  
+
   list(summary = summary, problems = problems)
 }
 
@@ -382,25 +383,23 @@ problem_table <- bind_rows(
 # ------------------------------------------------------------
 
 get_confusions <- function(var_name) {
-  
   m <- get_matrix(var_name)
-  
+
   coder_pairs <- list(
     c("LA", "MF"),
     c("LA", "LG"),
     c("MF", "LG")
   )
-  
+
   confusion_data <- lapply(
     coder_pairs,
     function(pair) {
-      
       coder_a_name <- pair[1]
       coder_b_name <- pair[2]
-      
+
       value_a <- m[, coder_a_name]
       value_b <- m[, coder_b_name]
-      
+
       tibble(
         screenshot_id = rownames(m),
         coder_a = coder_a_name,
@@ -422,9 +421,8 @@ get_confusions <- function(var_name) {
     }
   ) %>%
     bind_rows()
-  
+
   if (nrow(confusion_data) == 0) {
-    
     return(
       tibble(
         variable = character(),
@@ -436,9 +434,9 @@ get_confusions <- function(var_name) {
       )
     )
   }
-  
+
   total_disagreements <- nrow(confusion_data)
-  
+
   confusion_data %>%
     group_by(
       .data$code_1,
@@ -508,4 +506,3 @@ message(
 #   echte Rest-/Sonderkategorien und keine Missing-Codes sind.
 # - Alpha bei starker Kategorien-Schiefe immer zusammen mit
 #   agreement_observed und dominant_rating_share interpretieren.
-

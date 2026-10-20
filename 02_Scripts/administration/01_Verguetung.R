@@ -1,6 +1,11 @@
+# Separater Verwaltungsablauf: Vergütung berechnen und Excel-Übersicht schreiben
+# Start im Projekt-Hauptverzeichnis; nicht Teil der drei Analyseschritte
+# Eingaben, Ausgabepfade und Vergütungsregeln stehen im Einstellungsabschnitt
+# Personenbezogene Verwaltungsdaten; beim Aufräumen nicht neu ausgeführt
+
 ################################################################################
 # Project: Tagebuchstudie – öffentlich relevante Informationsnutzung
-# File:    99_Payment.R
+# Datei: administration/01_Verguetung.R
 # Purpose: Zahlungsdaten aus SoSci mit Screening, tatsächlichen Screenshot-
 #          Uploads und Abschlussbefragung verknüpfen und eine auszahlungsfertige
 #          Excel-Datei erzeugen.
@@ -21,7 +26,6 @@
 # Output:
 #   - 03_Output/Auszahlung_Tagebuchstudie.xlsx
 ################################################################################
-rm(list = ls())
 
 # Zahlungsbefragung direkt aus SoSci laden
 eval(parse(
@@ -30,9 +34,9 @@ eval(parse(
 ))
 
 
-#===============================================================================
-# 01 Packages, helpers and settings
-#===============================================================================
+# ===============================================================================
+# 01 Pakete, Hilfsfunktionen und Einstellungen
+# ===============================================================================
 
 if (!requireNamespace("pacman", quietly = TRUE)) {
   install.packages("pacman")
@@ -45,7 +49,7 @@ pacman::p_load(
   fs
 )
 
-source(file.path("02_Scripts", "00_Helpers.R"))
+source("02_Scripts/funktionen/Daten_und_Statistik.R", encoding = "UTF-8")
 
 if (!exists("as_logical_safe")) {
   stop("Die Helper-Funktion `as_logical_safe()` wurde nicht gefunden.")
@@ -80,9 +84,9 @@ output_file <- file.path(
 fs::dir_create(output_folder)
 
 
-#===============================================================================
-# 02 Basic checks and cleaning helpers
-#===============================================================================
+# ===============================================================================
+# 02 Eingaben prüfen und Bereinigung vorbereiten
+# ===============================================================================
 
 if (!exists("ds")) {
   stop("Die SoSci-API hat kein Objekt `ds` erzeugt.")
@@ -100,13 +104,13 @@ if (length(missing_input_files) > 0) {
 
 required_payment_variables <- c(
   "IN01_RV1", # Personal Participant Code
-  "IN02_01",  # Vorname
-  "IN02_02",  # Nachname
-  "IN02_03",  # Straße + Hausnummer
-  "IN02_04",  # PLZ
-  "IN02_05",  # Ort
-  "IN02_06",  # Land
-  "IN02_07"   # IBAN
+  "IN02_01", # Vorname
+  "IN02_02", # Nachname
+  "IN02_03", # Straße + Hausnummer
+  "IN02_04", # PLZ
+  "IN02_05", # Ort
+  "IN02_06", # Land
+  "IN02_07" # IBAN
 )
 
 missing_payment_variables <- setdiff(
@@ -166,24 +170,24 @@ survey_complete_vector <- function(data, survey_name) {
     x <- stringr::str_to_lower(
       stringr::str_squish(as.character(data$committed))
     )
-    
+
     return(
       !is.na(x) &
         !x %in% c("", "na", "-1", "false", "0", "nein", "no")
     )
   }
-  
+
   completion_variable <- intersect(
     c("FINISHED", "finished", "Finished"),
     names(data)
   )
-  
+
   if (length(completion_variable) > 0) {
     return(
       as_logical_safe(data[[completion_variable[[1]]]]) %in% TRUE
     )
   }
-  
+
   stop(
     "Für `", survey_name,
     "` wurde weder `committed` noch FINISHED/finished gefunden. ",
@@ -197,11 +201,11 @@ find_participant_variable <- function(data, data_name) {
     c("personalParticipantCode", "personal_participant_code", "participant"),
     names(data)
   )
-  
+
   if (length(candidate) == 0) {
     stop("Kein Personal Participant Code in `", data_name, "` gefunden.")
   }
-  
+
   candidate[[1]]
 }
 
@@ -210,7 +214,7 @@ date_from_column <- function(data, variable) {
   if (!variable %in% names(data)) {
     return(rep(NA_character_, nrow(data)))
   }
-  
+
   value <- as.character(data[[variable]])
   value <- substr(value, 1, 10)
   value[!stringr::str_detect(value, "^[0-9]{4}-[0-9]{2}-[0-9]{2}$")] <- NA_character_
@@ -218,9 +222,9 @@ date_from_column <- function(data, variable) {
 }
 
 
-#===============================================================================
-# 03 Read RAW study files
-#===============================================================================
+# ===============================================================================
+# 03 Ungefilterte Studiendaten einlesen
+# ===============================================================================
 
 screening_raw <- read_delim(
   screening_file,
@@ -259,9 +263,9 @@ outro_participant_var <- find_participant_variable(
 )
 
 
-#===============================================================================
-# 04 Clean empty Diary / Outro entries
-#===============================================================================
+# ===============================================================================
+# 04 Leere Tagebuch- und Outro-Einträge bereinigen
+# ===============================================================================
 # Wie im bisherigen Cleaning: technisch leere Einträge ohne firstOpened entfernen.
 
 if (!"firstOpened" %in% names(diary_raw)) {
@@ -285,9 +289,9 @@ message("Empty diary entries removed: ", n_diary_empty)
 message("Empty outro entries removed: ", n_outro_empty)
 
 
-#===============================================================================
-# 05 Screening: exclusion status + completion status
-#===============================================================================
+# ===============================================================================
+# 05 Screening: Ausschluss und Abschluss bestimmen
+# ===============================================================================
 # WICHTIG:
 # Die bisherige Ausschlusslogik bleibt inhaltlich unverändert: Wenn intro_stop_age
 # oder intro_stop_usage nicht TRUE ist (also auch NA), ist die Person NICHT
@@ -370,9 +374,9 @@ screening_status <- screening %>%
   )
 
 
-#===============================================================================
-# 06 Prepare payment survey data
-#===============================================================================
+# ===============================================================================
+# 06 Zahlungsfragebogen aufbereiten
+# ===============================================================================
 # Alle Codes aus der Zahlungsbefragung bleiben erhalten. Für Stammdaten wird
 # bevorzugt der jüngste vollständig abgeschickte Datensatz genutzt; falls keiner
 # vorliegt, der jüngste vorhandene Datensatz. Der Abschlussstatus wird als
@@ -427,9 +431,9 @@ payment_completed <- payment_raw %>%
   distinct(participant, .keep_all = TRUE)
 
 
-#===============================================================================
-# 07 Count actual screenshot participation days from RAW Diary
-#===============================================================================
+# ===============================================================================
+# 07 Tage mit tatsächlichen Screenshot-Uploads zählen
+# ===============================================================================
 # Gezählt wird ein Tag nur dann, wenn in der jeweiligen Daily-Zeile mindestens
 # ein Screenshot-Feld tatsächlich befüllt ist. Mehrere Screenshots am selben Tag
 # zählen weiterhin nur als EIN Teilnahmetag.
@@ -481,9 +485,9 @@ upload_summary <- diary %>%
   )
 
 
-#===============================================================================
-# 08 Determine complete Outro participation
-#===============================================================================
+# ===============================================================================
+# 08 Vollständige Outro-Teilnahme bestimmen
+# ===============================================================================
 
 outro <- outro %>%
   mutate(
@@ -499,9 +503,9 @@ outro_status <- outro %>%
   )
 
 
-#===============================================================================
-# 09 Build study-status table
-#===============================================================================
+# ===============================================================================
+# 09 Übersicht des Teilnahmestatus erstellen
+# ===============================================================================
 # Zentrale Personenliste = Union aller Participant Codes, die irgendwo in
 # Screening, Diary, Outro oder Zahlungsbefragung vorkommen. Dadurch steht jeder
 # bekannte Fall in der späteren Excel-Tabelle, auch wenn einzelne Befragungen
@@ -559,15 +563,15 @@ study_status <- participant_universe %>%
     ),
     `Studienteilnahme vollständig` =
       `Erfüllt Screening-Einschlusskriterien` &
-      `Hat Screening vollständig ausgefüllt` &
-      `Hat genug Screenshots hochgeladen` &
-      `Hat Outro vollständig ausgefüllt`
+        `Hat Screening vollständig ausgefüllt` &
+        `Hat genug Screenshots hochgeladen` &
+        `Hat Outro vollständig ausgefüllt`
   )
 
 
-#===============================================================================
-# 10 Merge payment data and determine eligibility
-#===============================================================================
+# ===============================================================================
+# 10 Zahlungsdaten zusammenführen und Berechtigung bestimmen
+# ===============================================================================
 # Die Auszahlungstabelle startet nun mit ALLEN bekannten Participant Codes.
 # Personen, die am Screening scheitern oder einzelne Erhebungsbestandteile nicht
 # abgeschlossen haben, bleiben sichtbar und erhalten entsprechend FALSE-Flags.
@@ -596,7 +600,7 @@ payment_table <- study_status %>%
   mutate(
     `Auszahlungsbereit` =
       `Studienteilnahme vollständig` &
-      `Hat Zahlungsbefragung vollständig ausgefüllt`,
+        `Hat Zahlungsbefragung vollständig ausgefüllt`,
     Betrag = if_else(
       `Auszahlungsbereit`,
       payment_amount,
@@ -632,9 +636,9 @@ payment_table <- study_status %>%
   )
 
 
-#===============================================================================
-# 11 Payment/QC checks
-#===============================================================================
+# ===============================================================================
+# 11 Vergütung und Datenqualität prüfen
+# ===============================================================================
 
 missing_payment_details <- payment_table %>%
   filter(
@@ -716,9 +720,9 @@ duplicate_iban <- payment_table %>%
   arrange(IBAN, Name, Vorname)
 
 
-#===============================================================================
-# 12 Create formatted Excel payment list
-#===============================================================================
+# ===============================================================================
+# 12 Formatierte Excel-Zahlungsliste erstellen
+# ===============================================================================
 
 workbook <- openxlsx::createWorkbook()
 
@@ -764,7 +768,7 @@ openxlsx::writeData(
 )
 
 currency_style <- openxlsx::createStyle(
-  numFmt = '#,##0.00 [$€-407]'
+  numFmt = "#,##0.00 [$€-407]"
 )
 
 openxlsx::addStyle(
@@ -795,7 +799,7 @@ if (nrow(excel_table) > 0) {
   participant_col <- which(names(excel_table) == "Personal Participant Code")
   iban_col <- which(names(excel_table) == "IBAN")
   plz_col <- which(names(excel_table) == "PLZ")
-  
+
   openxlsx::addStyle(
     workbook,
     "Auszahlung",
@@ -833,7 +837,7 @@ if (nrow(excel_table) > 0 && length(status_cols) > 0) {
         fontColour = "#375623"
       )
     )
-    
+
     openxlsx::conditionalFormatting(
       workbook,
       "Auszahlung",
@@ -870,7 +874,7 @@ openxlsx::setColWidths(
     30, # Straße
     10, # PLZ
     20, # Ort
-    18  # Land
+    18 # Land
   )
 )
 
@@ -924,7 +928,7 @@ openxlsx::writeData(
 
 if (nrow(status_export) > 0) {
   status_export_cols <- which(names(status_export) %in% status_columns)
-  
+
   for (status_col in status_export_cols) {
     openxlsx::conditionalFormatting(
       workbook,
@@ -937,7 +941,7 @@ if (nrow(status_export) > 0) {
         fontColour = "#375623"
       )
     )
-    
+
     openxlsx::conditionalFormatting(
       workbook,
       "Teilnahmestatus",
@@ -983,7 +987,7 @@ write_control_block <- function(title, data) {
     startRow = control_row,
     startCol = 1
   )
-  
+
   openxlsx::addStyle(
     workbook,
     "Kontrolle",
@@ -992,9 +996,9 @@ write_control_block <- function(title, data) {
     cols = 1,
     stack = TRUE
   )
-  
+
   control_row <<- control_row + 1
-  
+
   if (nrow(data) == 0) {
     openxlsx::writeData(
       workbook,
@@ -1080,9 +1084,9 @@ openxlsx::saveWorkbook(
 )
 
 
-#===============================================================================
-# 13 Console report
-#===============================================================================
+# ===============================================================================
+# 13 Ergebnisübersicht in der Konsole
+# ===============================================================================
 
 total_payment <- sum(payment_table$Betrag, na.rm = TRUE)
 n_study_complete <- sum(payment_table$`Studienteilnahme vollständig`, na.rm = TRUE)

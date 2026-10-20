@@ -1,0 +1,39 @@
+% Gemeinsame Gestaltung der Analyseberichte
+\usepackage{etoolbox}
+\usepackage{fvextra}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{caption}
+\usepackage{colortbl}
+\definecolor{ReportTint}{HTML}{EDF3F5}
+\definecolor{ReportInk}{HTML}{263747}
+\definecolor{ReportAccent}{HTML}{176B80}
+\definecolor{ReportMuted}{HTML}{607480}
+\setmainfont{TeX Gyre Heros}
+\setsansfont{TeX Gyre Heros}
+\color{ReportInk}
+\AtBeginDocument{\hypersetup{linkcolor=ReportAccent,urlcolor=ReportAccent}}
+\titleformat{\section}{\Large\bfseries\color{ReportAccent}}{}{0pt}{}
+\titleformat{\subsection}{\large\bfseries\color{ReportAccent}}{}{0pt}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{ReportInk}}{}{0pt}{}
+\titlespacing*{\section}{0pt}{20pt}{10pt}
+\titlespacing*{\subsection}{0pt}{16pt}{8pt}
+\titlespacing*{\subsubsection}{0pt}{12pt}{6pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\scriptsize\color{ReportMuted}TAGEBUCHSTUDIE · AUSWERTUNG}
+\fancyhead[R]{\scriptsize\color{ReportMuted}FORSCHUNGSBERICHT}
+\fancyfoot[R]{\small\color{ReportAccent}\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\renewcommand{\sectionmark}[1]{\markboth{#1}{}}
+\setlength{\headheight}{15pt}
+\captionsetup{font=small,labelfont=bf,textfont={color=ReportMuted},skip=8pt}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+\RecustomVerbatimEnvironment{verbatim}{Verbatim}{breaklines,breakanywhere,fontsize=\scriptsize}
+\AtBeginEnvironment{longtable}{\footnotesize\setlength{\tabcolsep}{3pt}\renewcommand{\arraystretch}{1.22}\arrayrulecolor{ReportAccent}}
+\AtBeginEnvironment{quote}{\small\color{ReportMuted}}
+\setlength{\emergencystretch}{3em}
+\let\originalunderscore\_
+\renewcommand{\_}{\originalunderscore\allowbreak}
+\usepackage{float}
+\floatplacement{figure}{H}

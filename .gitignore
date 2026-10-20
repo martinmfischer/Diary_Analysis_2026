@@ -51,6 +51,66 @@ rsconnect/
 *.rds
 *.rdata
 *.csv
+!06_Coding/upload_exclusions.csv
 *.jpg
 *.png
 *.xlsx
+*.md
+# Lokale Arbeitsdateien, PDF-Builds und isolierte Prüfkopien
+/tmp/
+
+# Historische Arbeitskopien, lokale Pakete und frühere Diagnoseartefakte
+/Archive/Alte_Arbeitsdateien/
+
+# Lokale Codex-Arbeitsdateien und Hilfsumgebungen (auf jeder Ordnerebene)
+.work/
+.work-*/
+*.work
+*.work.*
+.tmp/
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Daten, Codierarbeitsdateien, generierte Ergebnisse und lokale Archive
+/01_Data/
+/03_Output/
+/04_Figures/
+/05_Participants/
+/06_Coding/*
+!/06_Coding/upload_exclusions.csv
+/07_Pretest/
+/07_Pretest_Archiv/
+/_Backups_Coding/
+/Archive/
+
+# Berichte, Dokumente, Tabellen und Bilddateien
+*.MD
+!/README.md
+!/CODE_AUDIT.md
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsm
+*.jpeg
+*.JPG
+*.JPEG
+*.PNG
+*.gif
+*.webp
+*.tif
+*.tiff
+*.bmp
+*.svg
+*.heic
+*.zip
+
+# Sperrdateien und Sicherungskopien von Editoren und Office
+~$*
+*.swp
+*.swo
+*.bak
+*~
