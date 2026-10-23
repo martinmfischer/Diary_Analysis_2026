@@ -1,95 +1,87 @@
-# Tagebuchstudie: Analyseprojekt
+# Auswertung der Social-Media-Tagebuchstudie
 
-Das Projekt in RStudio über `Diary_Analysis_2026.Rproj` öffnen und eine neue R-Sitzung starten. Alle Pfade beziehen sich auf den Projektordner. Eine gespeicherte `.RData` wird nicht benötigt.
+Das Projekt enthält die Analysen für das Paper sowie zwei ausgewählte Zusatzanalysen. Code, Kommentare und Ausgaben sind auf Englisch. Diese README und die lokale Übergabeanleitung sind auf Deutsch.
 
-Die ausführliche [Übergabeanleitung](Dokumentation/Uebergabe_Codebase.md) erklärt die gesamte aktive Codebase mit Schaubildern und einem geprüften Beispiel für eine zusätzliche Exploration. Eine [bearbeitbare Word-Fassung](Dokumentation/Uebergabe_Codebase.docx) liegt daneben.
+## Einstieg
 
-## Für die Übergabe: hier anfangen
+`Diary_Analysis_2026.Rproj` in RStudio öffnen und eine neue R-Sitzung starten. Alle Aufrufe werden aus dem Projektordner ausgeführt.
 
 ```r
-source("02_Scripts/02_Paper_Analysen.R", encoding = "UTF-8")
+source("01_Scripts/01_paper_analysis.R", encoding = "UTF-8")
+source("01_Scripts/checks.R", encoding = "UTF-8")
 ```
 
-Dieses Skript ist der Rumpf der Paper-Auswertung. Es liest die Daten selbst ein, wählt die gemeinsame Stichprobe aus und erstellt `03_Output/Paper_Tabellen.xlsx`. Tabellen und aufbereitete Daten stehen anschließend auch als R-Objekte im Environment. Es erzeugt keine Grafiken, Markdown-Berichte oder PDFs. Pandoc und LaTeX sind dafür nicht erforderlich.
+Der erste Aufruf berechnet die Paper-Ergebnisse. Der zweite prüft die Auswahlregeln, Bezugsgrößen und zentralen Auswertungsregeln. Pakete werden mit `pacman::p_load()` geladen.
 
-Die nummerierten Abschnitte führen durch die Auswertung:
+Die Ergebnisse stehen anschließend als R-Objekte und unter `outputs/` bereit:
 
-1. Datenbasis und Einschluss prüfen.
-2. Stichprobe und Teilnahme beschreiben.
-3. Intro: Nutzung, Informationsbedürfnisse, Incidentality-Mittelwertindex und typische Kontexte.
-4. Daily: Relevanz, Themen, Quellen, Formate, Kontexte und Praktiken beschreiben.
-5. Outro: Items, vollständige Mittelwertindizes und Alpha beschreiben.
-6. Intro und Tagebuch auf Personenebene vergleichen.
-7. Praktiken nach Begegnungsart und Format gegenüberstellen.
-8. Themenunterschiede mit Mehrebenenmodellen und Personen-Bootstrap untersuchen.
-9. Paper-Tabellen einschließlich Themen × Quellen, Kontextabgleich und gespeicherter Pretest-Reliabilität exportieren.
+- `paper_tables.xlsx`: Tabellen in Manuskriptreihenfolge.
+- `paper_results.rds`: gespeicherte Ergebnisse für die Berichtserstellung.
+- `sample_audit.csv`: Ein- und Ausschlüsse je Person.
+- `session_info.txt`: verwendete R- und Paketversionen.
 
-Die Modelle und der Bootstrap bleiben im Paper-Ablauf, weil ihre Befunde bereits im Manuskript verwendet werden. Sie sind explorativ; das Skript kennzeichnet ihren Zweck. Ihre längeren Berechnungen stehen unter `02_Scripts/paper/`. Der Hauptablauf zeigt, an welcher Stelle sie benötigt werden. Keine gerichteten Hypothesen nachträglich als konfirmatorisch ausweisen.
+## Reihenfolge der Paper-Analysen
 
-## Drei getrennte Aufgaben
-
-| Aufgabe | Einstieg | Ausgabe |
+| Abschnitt | Datei unter `01_Scripts/analysis/` | Inhalt |
 | --- | --- | --- |
-| Paper-Analysen | `02_Scripts/02_Paper_Analysen.R` | `03_Output/Paper_Tabellen.xlsx`, R-Ergebnisse und Modellobjekte |
-| Weitere Exploration und Methodenprüfungen | `02_Scripts/03_Zusatzanalysen.R` | zusätzlich `03_Output/Zusatzanalysen_Tabellen.xlsx` und Prüfprotokolle |
-| Essentials-Bericht | `02_Scripts/berichte/01_Essentials.R` | `03_Output/Analyse_Essentials.md`, PDF und Grafiken |
-| Explorationsbericht | `02_Scripts/berichte/02_Exploration.R` | `03_Output/Exploration.md`, PDF und Grafiken |
+| Methoden und Stichprobe | `01_data_and_sample.R` | Datenimport, Einschluss, Demografie, Teilnahme und gespeicherte Pretest-Reliabilität |
+| RQ1: Inhalte | `02_content.R` | Themen, Quellen, Formate, Plattformen, Werbung und Tabellen A1–A2 |
+| RQ2a: Kontexte | `03_contexts.R` | Ort und Gesellschaft; Vergleich mit typischer Nutzung im Intro |
+| RQ2b: Incidentality | `04_incidentalness.R` | Mittelwertindex, Alpha/Omega, Begegnungsarten, Survey–Diary-Vergleich mit Bootstrapintervallen und zwei Themenmodelle |
+| RQ2c: Praktiken | `05_practices.R` | Lesen/Ansehen, Recherche, Interaktion und „Nichts davon“; Anteile je Beitrag und je Person |
+| Export | `06_export.R` | Gemeinsame Excel-Datei und gespeicherte Ergebnisse für die Reports |
 
-Jeder Einstieg kann in einer neuen Sitzung direkt ausgeführt werden. Zusatzanalysen und Reports laden ihre Grundlage selbst. Für die Übergabe genügt zunächst der Paper-Einstieg. Die Report-Aufrufe führen auch die jeweils benötigten Analysen aus; ein zusätzlicher vorheriger Lauf ist nicht nötig. Das Paper-Arbeitsbuch wird immer vollständig vom Paper-Ablauf geschrieben. Die Reihenfolge der Reports verändert seinen Inhalt nicht.
+Die Themenmodelle bleiben erhalten, weil ihre Befunde im aktuellen Manuskript stehen. Nicht berichtete Themenpaarvergleiche und das zusätzliche Themenprofilmodell wurden entfernt. Bootstrapintervalle und Omega gehören jetzt zum normalen Paper-Durchlauf.
 
-Die Zusatzanalysen enthalten Plattformvergleiche bei denselben Personen, Tagesverläufe, zusätzliche Bedürfnis- und Kontextvergleiche, Verarbeitungsmuster, Item- und Omega-Diagnostik, offene Rückmeldungen und die Sensitivität der Uploadgrenze. Die Berichtstexte, ggplot-Abbildungen und PDF-Technik liegen vollständig unter `berichte/`. Beide Berichte behalten ihre bisherigen Inhalte und Ausgabepfade.
-
-Für die Manuskriptrevision vom 20.10.2026 ergänzt `02_Scripts/zusatz/05_Manuskript_Praezision.R` separat die 95%-Bootstrapintervalle der beiden Incidentality-Korrelationen. Das Skript lädt die Paper-Analyse und schreibt `03_Output/Manuskript_Korrelationen_KI.csv`; es verändert weder Stichprobe noch Report-Inhalte.
-
-`02_Scripts/zusatz/06_Manuskript_Ergaenzungen.R` ergänzt Teilnahmeumfang, beitragende Personen je Plattform und eine kleine Reaktivitätsprüfung in `03_Output/Manuskript_Ergaenzungen.xlsx`. Es verwendet den gemeinsamen Datenimport und verändert die Hauptstichprobe nicht. Die englischen Manuskriptgrafiken werden weiterhin unter `berichte/Paper_Abbildungen.R` erstellt; die Übersicht zu Inhalten bleibt dort für ergänzende Berichte verfügbar.
-
-Die bisherigen Aufrufe `02_Deskriptive_Auswertung.R` und `03_Explorative_Auswertung.R` verweisen auf die beiden Report-Skripte. `01_Daten_einlesen.R` speichert die Fragebogendaten für die Codiersheet-Vorbereitung als RDS; es ist keine Voraussetzung für den Paper-Lauf.
-
-## Wo etwas geändert wird
-
-| Datei oder Ordner | Zuständigkeit |
-| --- | --- |
-| `analyseschritte/01_Stichprobe.R` | Gemeinsame Ein- und Ausschlussregeln, Uploadzählung und Stichprobenprotokoll |
-| `paper/01_Datenbasis.R` | Coding Sheet und Codebook lesen, Schlüssel und Codes prüfen, Stichprobe auswählen |
-| `02_Paper_Analysen.R` | Deskription, Skalenbildung, Personenanteile und zentrale Vergleiche |
-| `paper/02_Themen_und_Begegnungsart.R` | Themenhäufigkeiten, logistische Mehrebenenmodelle und Holm-Korrekturen |
-| `paper/03_Themenprofile.R` | Themenprofile, Personen-Bootstrap und simultane Intervalle |
-| `paper/04_Ergebnistabellen.R` | Englische Paper-Tabellen, Themen × Quellen, Kontextabgleich und Export |
-| `funktionen/` | Kleine wiederverwendete Daten- und Tabellenfunktionen |
-| `zusatz/` | Weitere Exploration und Methodenprüfungen |
-| `berichte/` | Grafikgestaltung, Berichtstexte und PDF-Erstellung |
-| `vorbereitung/`, `administration/` | Codiersheet, Pretest und Vergütung; separat ausführen |
-
-Teilskripte werden an der angegebenen Stelle über `source()` geladen. Sie verwenden die vorher erzeugten, benannten R-Objekte. Für einen vollständigen Lauf immer einen Einstieg verwenden; einzelne Abschnitte können danach in RStudio nachvollzogen werden. Pakete werden über `pacman::p_load()` geladen. Die Datenaufbereitung nutzt vor allem `dplyr` und `tidyr`.
-
-## Fachliche Regeln und Eingaben
-
-- Screening erfüllt, Intro und Outro abgeschlossen (`committed` vorhanden), mindestens sieben unterschiedliche Uploads nach dokumentierten Ausschlüssen. Keine Mindestzahl an Uploadtagen; keine zusätzlichen Abschlussflags.
-- Bekannte Bildduplikate werden über die gesicherte Zuordnung aus `Backups/Coding/coding_sheet_backup_2026-10-13_140323.xlsx` abgezogen. Vier weitere ausgeschlossene Dateien stehen in `06_Coding/upload_exclusions.csv`. Aktuell: 105 Personen, 3.288 codierte Uploads, davon 3.074 öffentlich relevant.
-- Der Incidentality-Index ist der Mittelwert aller sechs Items, Item 5 umgepolt; nur vollständige Antworten. Im Tagebuch sind Zufall (Code 3) und ungeplant (Codes 2 und 3) getrennte Definitionen.
-- Bei der Praxisfrage bedeutet dreimal −1 ausdrücklich „Nichts davon“: alle drei Praktiken werden als Nein ausgewertet. Echte fehlende Werte bleiben fehlend. Die Rohcodes bleiben erhalten.
-- Screenshotanteile und mittlere Personenanteile haben unterschiedliche Bezugsgrößen. Nicht beobachtete Kategorien zählen innerhalb einer Person als null; tatsächlich fehlende Codes nicht.
-
-Benötigt werden die drei rohen Fragebogen-CSV-Dateien unter `01_Data/`, das bereinigte `06_Coding/coding_sheet.xlsx` samt Codebook, die dokumentierten Ausschlüsse, die lokale Feedbackzuordnung und die gespeicherte Pretest-Reliabilität unter `07_Pretest/`. Die Zusatzanalysen benötigen außerdem die Pretest-Codebooks und die bestehende Zuordnung der Pretest-Dateien. Die Analysen öffnen keine Teilnehmerbilder und verändern keine Rohdaten oder manuellen Codierungen. Ein Git-Checkout enthält nur Code und diese README. Studiendaten, Codierungen, Backups und Dokumentation werden separat und lokal weitergegeben.
-
-Nur die Report-Aufrufe benötigen zusätzlich `ggplot2`, `knitr`, `rmarkdown`, Pandoc und XeLaTeX. Layoutvorlagen stehen unter `berichte/vorlagen/`. PDF-Zwischendateien liegen unter `tmp/pdfs/`.
-
-## Prüfungen
+## Zwei zusätzliche Explorationen
 
 ```r
-source("02_Scripts/pruefungen/01_Syntax_und_Verweise.R", encoding = "UTF-8")
-source("02_Scripts/pruefungen/03_Gemeinsame_Funktionen.R", encoding = "UTF-8")
-source("02_Scripts/pruefungen/04_Paper_Ablauf.R", encoding = "UTF-8")
+source("01_Scripts/02_selected_exploration.R", encoding = "UTF-8")
 ```
 
-Die letzte Prüfung führt den Paper-Ablauf in einer eigenen R-Umgebung aus und prüft Nenner, Praxisantworten, Indexbildung, Modelltabellen und die Trennung vom Reporting. Die zusätzliche Prüfung `02_Inklusionskriterien.R` setzt den separaten RDS-Import voraus.
+1. **Facebook und Instagram bei denselben Personen:** Themen- und Quellenprofile, mindestens drei eingereichte Beiträge je Plattform. Jede Person zählt gleich. Der Vergleich ist beschreibend.
+2. **Informationsbedürfnisse und Praktiken:** Drei ausgewählte Zusammenhänge: Problemlösung und Recherche, thematisches Interesse und gezielte Suche, allgemeine Orientierung und Lesen/Ansehen. Je Person ein Wertepaar; Holm-Korrektur über die drei Tests.
 
-## Lokale Dateien und Git
+Das Skript liest die gemeinsame Datenbasis selbst ein. Es berechnet die Paper-Modelle nicht erneut und verändert die Paper-Ergebnisse nicht. Die Ausgaben heißen `selected_exploration.xlsx` und `selected_exploration.rds`.
 
-`Dokumentation/` enthält die Übergabeanleitung, ihre Schaubilder und die ursprüngliche Teilnahmeinstruktion. Der Ordner bleibt lokal und wird nicht zu GitHub übertragen. Auch `Backups/` ist vollständig ignoriert; seine eigene `.gitignore` schließt alle Inhalte aus.
+## Berichte und Abbildungen
 
-`Backups/Coding/coding_sheet_backup_2026-10-13_140323.xlsx` wird weiterhin für die Duplikatzuordnung benötigt. Diese Datei beim Weitergeben der Daten mitkopieren. Weitere Coding- und Pretest-Sicherungen liegen ebenfalls unter `Backups/`. Das einmalige Archiv `Bereinigung_2026-10-23.zip` ermöglicht, die bei dieser Bereinigung entfernten Arbeitsdateien wiederherzustellen.
+Zuerst die jeweilige Analyse ausführen, danach bei Bedarf:
 
-Die Ausgabeverzeichnisse `03_Output/` und `04_Figures/` sind zunächst leer. Analysen und Reports erzeugen ihre Ergebnisse beim nächsten Lauf neu; Git ignoriert diese Ergebnisse vollständig. Die gespeicherte Reliabilität unter `07_Pretest/` bleibt als Eingabe für die Paper-Tabellen erhalten.
+```r
+source("01_Scripts/reporting/01_paper_report.R", encoding = "UTF-8")
+source("01_Scripts/reporting/02_exploration_report.R", encoding = "UTF-8")
+```
 
-Die Zusatzanalysen lesen die manuelle Erstzuordnung der offenen Antworten aus `06_Coding/feedback_codes.csv`. Der private Exportlink für den separaten Vergütungsablauf steht unter `01_Data/sosci_payment_export_url.txt`. Beide Dateien gehören zur lokalen Übergabe und werden nicht versioniert.
+Die Reports lesen gespeicherte Ergebnisse und erzeugen Markdown, PDF und Abbildungen unter `outputs/`. Sie rechnen die Analysen nicht erneut. Für Berichte werden zusätzlich ggplot2, knitr, rmarkdown, Pandoc und XeLaTeX benötigt. Die reine Analyse braucht keine PDF-Software.
+
+Die drei Paper-Abbildungen stehen in `01_Scripts/reporting/paper_figures.R`. Figure 1 hebt die drei häufigsten Themen je Begegnungsart hervor. Einen Report erweitert man durch einen weiteren `report_section()`-Aufruf mit Tabelle, kurzer Zweckangabe und optionalem Bildpfad.
+
+## Benötigte lokale Daten
+
+| Datei | Inhalt |
+| --- | --- |
+| `01_Data/initial_survey.csv` | Originaler Intro-Export |
+| `01_Data/daily_survey.csv` | Originaler Daily-Export |
+| `01_Data/closing_survey.csv` | Originaler Outro-Export |
+| `06_Coding/coding_sheet.xlsx` | Finale Codierung und Codebook |
+| `06_Coding/upload_exclusions.csv` | Vier dokumentierte technische Ausschlüsse |
+| `06_Coding/duplicate_uploads.csv` | 23 dokumentierte Duplikate aus der ursprünglichen Coding-Sicherung |
+| `07_Pretest/pretest_reliability.xlsx` | Gespeicherte Reliabilitätswerte für den Methodenteil |
+
+Die drei Fragebogen-CSV-Dateien sind mit Semikolon getrennt. Ihre Dateinamen wurden übersetzt; die Inhalte blieben unverändert. Originale Fragebogentexte, Rohvariablen und Bildnamen bleiben erhalten. Die Analyse öffnet keine Teilnehmerbilder und benötigt keine Datei aus `Backups/`.
+
+## Wichtige Auswertungsregeln
+
+- Screening erfüllt, Intro und Outro abgeschlossen (`committed` vorhanden), mindestens sieben unterschiedliche Uploads nach Ausschlüssen. Keine Mindestzahl an Uploadtagen und keine zusätzlichen Abschlussflags.
+- Incidentality: Mittelwert aller sechs Items, Item 5 umgepolt, nur vollständige Antworten. Alpha und Omega werden mit `psych` berechnet; Omega behält die im Manuskript verwendete explorative Spezifikation mit drei Gruppenfaktoren.
+- Zufallsbegegnungen: Code 3. Begegnungen ohne gezielte Suche: Codes 2 und 3. Diese beiden Zusammenfassungen überlappen.
+- Dreimal −1 bei den Praxisantworten bedeutet „Nichts davon“ und wird zu dreimal 0. Echte fehlende Angaben bleiben fehlend.
+- Bei mittleren Personenanteilen zählt jede Person gleich. Bei Praktiken nach Begegnungsart gehen nur Personen mit gültigen Beiträgen dieser Art ein; die Gruppen können sich überschneiden und unterschiedlich groß sein.
+- Restkategorien bleiben gültige Inhaltskategorien. „Weiß nicht mehr“ und fehlende Kontexte entfallen beim Kontextvergleich auf Personenebene.
+
+## Git und Übergabe
+
+Daten, Outputs, `Documentation/` und `Backups/` werden nicht versioniert. Ein Git-Checkout enthält deshalb nicht alle zum Rechnen benötigten Dateien. Die lokalen Eingaben müssen separat mitgegeben werden.
+
+Die [Übergabeanleitung](Documentation/Handover.md) erklärt die Weiterarbeit mit einem Beispiel. Frühere Skripte und Unterlagen liegen gesichert unter `Backups/English_Refactor_2026-10-23/`. Die alten Verwaltungs-, Vorbereitungs- und umfangreichen Zusatzskripte gehören nicht mehr zum aktiven Ablauf.

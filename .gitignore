@@ -1,17 +1,15 @@
-# Lokale Studiendaten und Codierungen
+# Local study data and coding
 /01_Data/
 /05_Participants/
 /06_Coding/
 /07_Pretest/
 
-# Lokale Übergabeunterlagen und Sicherungen
-/Dokumentation/
+# Local handover documents and backups
+/Documentation/
 /Backups/
-/Archive/
-/_Backups_Coding/
-/07_Pretest_Archiv/
 
-# Erzeugte Ergebnisse und temporäre Arbeitsdateien
+# Generated results and temporary files
+/outputs/
 /03_Output/
 /04_Figures/
 /tmp/
@@ -21,7 +19,7 @@ Rplots.pdf
 *.utf8.md
 *.knit.md
 
-# RStudio, Sitzungen und lokale Zugangsdaten
+# RStudio, sessions and local credentials
 .Rproj.user/
 .Rhistory
 .Rapp.history
@@ -31,11 +29,12 @@ Rplots.pdf
 .Renviron
 .httr-oauth
 
-# Daten, Berichte und Abbildungen auch außerhalb der Ausgabeordner
+# Data, reports and figures outside the output directories
 *.csv
 *.tsv
 *.rds
 *.rdata
+*.RDS
 *.RData
 *.xlsx
 *.xls
@@ -63,7 +62,7 @@ Rplots.pdf
 *.zip
 *.log
 
-# Lokale Werkzeuge und Editorreste
+# Local tools and editor files
 .work/
 .work-*/
 *.work

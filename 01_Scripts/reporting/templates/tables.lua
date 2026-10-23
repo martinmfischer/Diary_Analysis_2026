@@ -1,4 +1,4 @@
--- Feste Spaltenbreiten erlauben Umbrüche in breiten Markdown-Tabellen.
+-- Column widths allow wrapping in wide Markdown tables.
 function Table(t)
   local widths = {}
   for i = 1, #t.colspecs do widths[i] = 6 end
