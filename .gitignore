@@ -1,68 +1,69 @@
-# History files
-.Rhistory
-.Rapp.history
+# Lokale Studiendaten und Codierungen
+/01_Data/
+/05_Participants/
+/06_Coding/
+/07_Pretest/
 
-# Session Data files
-.RData
-.RDataTmp
+# Lokale Übergabeunterlagen und Sicherungen
+/Dokumentation/
+/Backups/
+/Archive/
+/_Backups_Coding/
+/07_Pretest_Archiv/
 
-# User-specific files
-.Ruserdata
-
-# Example code in package build process
-*-Ex.R
-
-# Output files from R CMD build
-/*.tar.gz
-
-# Output files from R CMD check
-/*.Rcheck/
-
-# RStudio files
-.Rproj.user/
-
-# produced vignettes
-vignettes/*.html
-vignettes/*.pdf
-
-# OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
-.httr-oauth
-
-# knitr and R markdown default cache directories
+# Erzeugte Ergebnisse und temporäre Arbeitsdateien
+/03_Output/
+/04_Figures/
+/tmp/
+Rplots.pdf
 *_cache/
 /cache/
-
-# Temporary files created by R markdown
 *.utf8.md
 *.knit.md
 
-# R Environment Variables
+# RStudio, Sitzungen und lokale Zugangsdaten
+.Rproj.user/
+.Rhistory
+.Rapp.history
+.RData
+.RDataTmp
+.Ruserdata
 .Renviron
+.httr-oauth
 
-# pkgdown site
-docs/
-
-# translation temp files
-po/*~
-
-# RStudio Connect folder
-rsconnect/
-
+# Daten, Berichte und Abbildungen auch außerhalb der Ausgabeordner
+*.csv
+*.tsv
 *.rds
 *.rdata
-*.csv
-!06_Coding/upload_exclusions.csv
-*.jpg
-*.png
+*.RData
 *.xlsx
+*.xls
+*.xlsm
+*.pdf
+*.html
+*.doc
+*.docx
 *.md
-# Lokale Arbeitsdateien, PDF-Builds und isolierte Prüfkopien
-/tmp/
+*.MD
+!/README.md
+*.png
+*.jpg
+*.jpeg
+*.PNG
+*.JPG
+*.JPEG
+*.gif
+*.webp
+*.tif
+*.tiff
+*.bmp
+*.svg
+*.heic
+*.zip
+*.log
 
-# Historische Arbeitskopien, lokale Pakete und frühere Diagnoseartefakte
-/Archive/Alte_Arbeitsdateien/
-
-# Lokale Codex-Arbeitsdateien und Hilfsumgebungen (auf jeder Ordnerebene)
+# Lokale Werkzeuge und Editorreste
 .work/
 .work-*/
 *.work
@@ -73,42 +74,6 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
-
-# Daten, Codierarbeitsdateien, generierte Ergebnisse und lokale Archive
-/01_Data/
-/03_Output/
-/04_Figures/
-/05_Participants/
-/06_Coding/*
-!/06_Coding/upload_exclusions.csv
-/07_Pretest/
-/07_Pretest_Archiv/
-/_Backups_Coding/
-/Archive/
-
-# Berichte, Dokumente, Tabellen und Bilddateien
-*.MD
-!/README.md
-!/CODE_AUDIT.md
-*.pdf
-*.doc
-*.docx
-*.xls
-*.xlsm
-*.jpeg
-*.JPG
-*.JPEG
-*.PNG
-*.gif
-*.webp
-*.tif
-*.tiff
-*.bmp
-*.svg
-*.heic
-*.zip
-
-# Sperrdateien und Sicherungskopien von Editoren und Office
 ~$*
 *.swp
 *.swo

@@ -3,6 +3,10 @@
 # Rückgabe: Theme bzw. formatierte Markdown-Zeilen; keine eigene Dateiausgabe
 
 # Gestaltung ohne Änderung der Auswertung
+markdown_table <- function(data) {
+  as.character(knitr::kable(data, format = "pipe", digits = 2, row.names = FALSE))
+}
+
 report_theme <- function() {
   ggplot2::theme_minimal(base_size = 12, base_family = "sans") +
     ggplot2::theme(

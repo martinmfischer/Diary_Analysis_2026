@@ -29,7 +29,7 @@
 
 # Zahlungsbefragung direkt aus SoSci laden
 eval(parse(
-  "https://survey.ifkw.lmu.de/mesm-inzentive/?act=vT203cD1JiYYOUfLn2Me78sZ&vQuality&rScript",
+  readLines("01_Data/sosci_payment_export_url.txt", warn = FALSE),
   encoding = "UTF-8"
 ))
 

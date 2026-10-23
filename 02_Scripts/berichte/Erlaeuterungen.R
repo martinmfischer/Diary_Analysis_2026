@@ -11,7 +11,7 @@ explain_report <- function(report, kind) {
   }), use.names = FALSE)
   explanations <- list()
   add <- function(heading, text) explanations[[heading]] <<- text
-  practices <- paste0("Mit Lesen ist gründliches Lesen oder Anschauen des Beitrags gemeint (interaction_read_code), mit Recherche die Suche nach weiteren Informationen einschließlich eines Linkklicks (interaction_research_code) und mit Interaktion eine berichtete sichtbare Handlung wie Liken, Kommentieren oder Weiterleiten (interaction_engagement_code). Diese drei Angaben stammen aus dem Tagebuchfragebogen, nicht aus einer Beobachtung des tatsächlichen Verhaltens. Jede Praxis wird getrennt als 1 = berichtet und 0 = nicht berichtet ausgewertet; fehlende Angaben werden nicht als 0 behandelt.")
+  practices <- paste0("Mit Lesen ist gründliches Lesen oder Anschauen des Beitrags gemeint (interaction_read_code), mit Recherche die Suche nach weiteren Informationen einschließlich eines Linkklicks (interaction_research_code) und mit Interaktion eine berichtete sichtbare Handlung wie Liken, Kommentieren oder Weiterleiten (interaction_engagement_code). Diese drei Angaben stammen aus dem Tagebuchfragebogen, nicht aus einer Beobachtung des tatsächlichen Verhaltens. Die Ausweichoption −1 = Nichts davon ist eine gültige Antwort: Bei drei −1-Codes werden alle drei Praktiken mit 0 ausgewertet, nicht als fehlend. Jede Praxis wird getrennt als 1 = berichtet und 0 = nicht berichtet ausgewertet; fehlende Angaben werden nicht als 0 behandelt.")
   encounters <- "Die Begegnungsart stammt aus incidentality_code: 1 = gezielt nach Thema oder Account gesucht, 2 = dem Account gefolgt, aber nicht gezielt nach diesem Beitrag gesucht, 3 = zufällig auf den Beitrag gestoßen. Zufall meint nur Code 3; Ungeplant fasst Codes 2 und 3 zusammen. Der Nenner eines Personenanteils sind jeweils die öffentlich relevanten Beiträge dieser Person mit gültiger Angabe zur Begegnungsart."
   stats <- "N bzw. Personen bezeichnet die Zahl gültiger Fälle, nicht immer die gesamte eingeschlossene Stichprobe. M/Mittelwert ist der Durchschnitt; SD beschreibt die Streuung; der Median teilt die Werte in zwei Hälften. Q1 und Q3 begrenzen die mittleren 50 Prozent. Fehlend nennt die nicht auswertbaren Antworten. Ein Prozentpunkt ist die Differenz zweier Prozentwerte, keine relative prozentuale Veränderung."
   add(
@@ -168,7 +168,7 @@ explain_report <- function(report, kind) {
     )
     add(
       "### Sozialer Kontext",
-      "Im Intro-Abschnitt wird intro_context_situation beschrieben: typische Nutzung überwiegend allein, überwiegend gemeinsam oder etwa gleich häufig. Im Daily-Abschnitt wird dagegen situation_code für den jeweiligen Beitrag ausgewertet: allein, gemeinsam oder weiß nicht mehr. Intro-Prozente beziehen sich auf Personen; Daily-Prozente auf gültige Beiträge bzw. auf gemittelte Personenanteile. Die beiden Tabellen werden hier separat beschrieben und nicht direkt statistisch miteinander verglichen."
+      "Im Intro-Abschnitt wird intro_context_situation beschrieben: typische Nutzung überwiegend allein, überwiegend gemeinsam oder etwa gleich häufig. Im Daily-Abschnitt wird dagegen situation_code für den jeweiligen Beitrag ausgewertet: allein, gemeinsam oder weiß nicht mehr. Intro-Prozente beziehen sich auf Personen; Daily-Prozente auf gültige Beiträge bzw. auf gemittelte Personenanteile. Der personenbezogene statistische Abgleich folgt unter Typischer Kontext und Tagebuch im Vergleich."
     )
     add(
       "## 4. Daily Coding",

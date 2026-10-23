@@ -6,7 +6,7 @@
 # Voraussetzung: vorhandene 02_Scripts/funktionen/Daten_und_Statistik.R.
 # Screenshots: 05_Participants/LA, /MF, /LG (flach).
 # Verteilung: alphabetisch nach screenshot_id, zyklisch LA/MF/LG.
-# Bei erneutem Aufbau alte Ausgaben in _Backups_Coding sichern.
+# Bei erneutem Aufbau alte Ausgaben in Backups/Coding sichern.
 # Explorer: Ansicht nach Name aufsteigend wählen; Ordner speichern keine Sortierung.
 #
 # Purpose:
@@ -77,6 +77,8 @@ label_code <- function(x, labels) {
 }
 
 collapse_interactions <- function(read, research, engagement) {
+  if (all(!is.na(c(read, research, engagement))) &&
+      all(c(read, research, engagement) == -1)) return("None of the above")
   x <- c(
     if (!is.na(read) && read == 1) "Read/watched thoroughly",
     if (!is.na(research) && research == 1) "Sought further information",
@@ -97,7 +99,7 @@ situation_labels <- c(
   `2` = "Used the platform together with someone else",
   `3` = "Don't know"
 )
-interaction_labels <- c(`1` = "Yes", `0` = "No", `-1` = "No answer")
+interaction_labels <- c(`1` = "Yes", `0` = "No", `-1` = "None of the above")
 
 
 # ===============================================================================
@@ -135,7 +137,7 @@ excluded_ids <- coding %>%
   canonical_id() %>%
   unique()
 # Bereits dokumentierte Duplikate auch bei einem Neuaufbau ausschließen
-removed_files <- openxlsx::read.xlsx("06_Coding/coding_sheet_backup_2026-10-13_140323.xlsx",
+removed_files <- openxlsx::read.xlsx("Backups/Coding/coding_sheet_backup_2026-10-13_140323.xlsx",
   sheet = "Coding"
 ) %>%
   filter(is_marked_screenshot_duplicate(notes)) %>%
@@ -815,7 +817,7 @@ if (nrow(check) > 0) {
 # Alte Ordner außerhalb von 05_Participants sichern (auch alte TN-Unterordner).
 # Bereits codierte Excel-Dateien nur mit overwrite_existing = TRUE neu aufbauen.
 backup_folder <- tempfile(paste0(format(Sys.time(), "%Y%m%d_%H%M%S"), "_"),
-  tmpdir = "_Backups_Coding"
+  tmpdir = "Backups/Coding"
 )
 fs::dir_create(backup_folder)
 backup_participants <- file.path(backup_folder, "05_Participants")

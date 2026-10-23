@@ -1,5 +1,5 @@
 # 01 Gemeinsame Stichprobe -------------------------------------------------------
-# Aufgerufen durch: Datenimport, deskriptive Auswertung und Exploration
+# Aufgerufen durch: Datenimport und paper/01_Datenbasis.R
 # Benötigt: geladene Datenpakete und funktionen/Daten_und_Statistik.R
 # Liest: rohe Fragebogen-CSV-Dateien und dokumentierte Duplikate im Coding-Backup
 # Liefert: intro_raw, outro_raw, upload_raw, study_ids, sample_audit,
@@ -37,7 +37,7 @@ upload_raw <- upload_raw %>% mutate(across(matches("^daily_[0-9]+_screenshot$"),
 
 # Dateinamen zählen Uploads, ohne Bilder zu öffnen. Bekannte Duplikate entfallen.
 removed_coding <- openxlsx::read.xlsx(
-  "06_Coding/coding_sheet_backup_2026-10-13_140323.xlsx",
+  "Backups/Coding/coding_sheet_backup_2026-10-13_140323.xlsx",
   sheet = "Coding"
 ) %>%
   filter(is_marked_screenshot_duplicate(notes)) %>%

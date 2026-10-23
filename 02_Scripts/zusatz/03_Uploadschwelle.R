@@ -1,14 +1,7 @@
-# 03 Bestehende Sensitivitätsanalyse der Uploadschwelle --------------------------
-# Aufgerufen durch: beide Auswertungen vor dem abschließenden Berichtsexport
-# Benötigt: study_ids, sample_audit, intro_raw und gemeinsame Funktionen
-# Liest zusätzlich: vorhandenes Hauptcoding
-# Liefert: threshold_comparison, category_comparison, threshold_basis,
-#          category_max und upload_sensitivity_report
-# Schreibt: drei Uploadschwelle_*.csv-Dateien nach 03_Output
-# Verglichen werden dieselben Kennzahlen in zwei unterschiedlich großen Gruppen
-
-# Vergleich derselben Kennzahlen ab einem bzw. sieben Uploads
-# Grundlage: vorhandenes Hauptcoding, keine imputierten Inhaltscodes
+# Sensitivität: mindestens ein statt mindestens sieben Uploads.
+# Screening und abgeschlossene Intro-/Outro-Fragebögen bleiben erforderlich.
+# Nachträgliche Robustheitsanalyse; ändert die Hauptstichprobe nicht.
+# Benötigt study_ids, sample_audit, intro_raw und gemeinsame Funktionen.
 
 # 01 Vergleichsgruppen und gleich gepolten Intro-Index vorbereiten ----------------
 
@@ -22,17 +15,17 @@ sensitivity_intro <- intro_raw %>% select(participant, starts_with("intro_incide
 incidentality_item_values <- incidentality_scores(sensitivity_intro)
 sensitivity_intro$Index <- rowMeans(incidentality_item_values, na.rm = FALSE)
 
-
 # 02 Praktiken und Begegnungsarten: Beiträge, Personenanteile und Korrelationen ----
 
 threshold_results <- lapply(names(sensitivity_ids), function(basis) {
   participant_ids <- sensitivity_ids[[basis]]
   public_posts <- sensitivity_coding %>%
     filter(participant %in% participant_ids, public_rel_coded == 1) %>%
+    decode_practices() %>%
     transmute(participant,
-      Lesen = clean_binary(interaction_read_code),
-      Recherche = clean_binary(interaction_research_code),
-      Interaktion = clean_binary(interaction_engagement_code),
+      Lesen = read,
+      Recherche = research,
+      Interaktion = engage,
       Zufall = if_else(incidentality_code %in% 1:3,
         as.numeric(incidentality_code == 3),
         NA_real_
@@ -149,25 +142,3 @@ stopifnot(
   sum(sample_audit$included) == length(study_ids)
 )
 stopifnot(setequal(sensitivity_ids$Ab_sieben, study_ids))
-
-# 05 Berichtsteil mit den jeweiligen Bezugsgrößen erstellen ------------------------
-
-upload_sensitivity_report <- c(
-  "## Robustheit gegenüber der Uploadschwelle", "",
-  "Die Hauptauswertung verlangt erfülltes Screening, abgeschlossenes Intro und Outro sowie mindestens sieben unterschiedliche Uploads nach Abzug bekannter Duplikate. Ergänzend wird die Uploadgrenze auf einen Upload gelockert; Intro und Outro bleiben auch dort verpflichtend. Beide Varianten verwenden dieselben verfügbaren Codierungen einschließlich der übernommenen Pretest-Dateien.",
-  "",
-  as.character(knitr::kable(threshold_basis, format = "pipe", row.names = FALSE)), "",
-  "Ab_sieben bezeichnet die Hauptstichprobe; Alle die ergänzende Vergleichsgruppe ab einem Upload bei ebenfalls abgeschlossenem Intro und Outro. N zählt in der Beitragsebene gültige Beiträge, in den anderen Zeilen Personen. Wert enthält entweder einen Prozentwert oder Spearman-rho. Differenz ist Vergleichsgruppe minus Hauptstichprobe (Alle minus Ab_sieben): bei Anteilen in Prozentpunkten, bei Korrelationen in rho-Einheiten. Intro–Tagebuch korreliert den sechs Items umfassenden Intro-Index mit dem individuellen Zufalls- bzw. Ungeplant-Anteil.",
-  "",
-  as.character(knitr::kable(threshold_comparison,
-    format = "pipe",
-    digits = 3,
-    row.names = FALSE
-  )),
-  "",
-  "Für Thema, Quelle und Format zeigt die nächste Tabelle die größte absolute Veränderung eines Kategorieanteils über alle Kategorien. Grundlage sind jeweils öffentlich relevante Beiträge mit gültigem Code. Die vollständigen Verteilungen stehen in Uploadschwelle_Kategorien.csv.",
-  "",
-  as.character(knitr::kable(category_max, format = "pipe", digits = 3, row.names = FALSE)), "",
-  "Wichtig: Diese Prüfung betrifft die Uploadschwelle innerhalb des verfügbaren Hauptcodings. Sie zeigt nicht, welche Ergebnisse zusätzliche, bislang nicht im Hauptcoding enthaltene Uploads liefern würden. Personenanteile aus wenigen Beiträgen bleiben unsicher; die Mindestzahl je Plattform oder Vergleichssituation bei gepaarten Analysen ist eine eigenständige, weiterhin explizit ausgewiesene Analyseregel.",
-  ""
-)

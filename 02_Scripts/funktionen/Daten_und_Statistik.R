@@ -43,16 +43,14 @@ clean_numeric <- function(x) {
 }
 
 
-markdown_table <- function(data) {
-  as.character(knitr::kable(data, format = "pipe", digits = 2, row.names = FALSE))
-}
-
 # Präregistrierter Index: sechs Items, Item 5 umpolen, nur vollständige Werte.
 incidentality_scores <- function(data) {
-  items <- data[paste0("intro_incidentality_", 1:6)]
-  items[] <- lapply(items, function(x) dplyr::na_if(clean_numeric(x), -1))
-  items$intro_incidentality_5 <- 6 - items$intro_incidentality_5
-  items
+  data %>%
+    dplyr::select(dplyr::all_of(paste0("intro_incidentality_", 1:6))) %>%
+    dplyr::mutate(
+      dplyr::across(dplyr::everything(), ~ dplyr::na_if(clean_numeric(.x), -1)),
+      intro_incidentality_5 = 6 - intro_incidentality_5
+    )
 }
 
 # Für alle explorativen Korrelationen dieselbe Regel für gültige Wertepaare.
@@ -130,6 +128,24 @@ clean_binary <- function(x) {
     numeric_value == -1 ~ NA_integer_,
     TRUE ~ NA_integer_
   )
+}
+
+# Nur diese Multiple-Choice-Frage: -1 ist die explizite Option "Nichts davon".
+# GESIS exportiert die gewählte Ausweichoption in allen drei Antwortspalten.
+# Andere Variablen behalten ihre bisherige Missing-Behandlung.
+decode_practices <- function(data) {
+  columns <- c("interaction_read_code", "interaction_research_code", "interaction_engagement_code")
+  data %>%
+    dplyr::mutate(
+      practice_none = dplyr::if_all(dplyr::all_of(columns),
+        ~ !is.na(clean_numeric(.x)) & clean_numeric(.x) == -1),
+      read = dplyr::if_else(practice_none, 0L,
+        clean_binary(clean_numeric(interaction_read_code))),
+      research = dplyr::if_else(practice_none, 0L,
+        clean_binary(clean_numeric(interaction_research_code))),
+      engage = dplyr::if_else(practice_none, 0L,
+        clean_binary(clean_numeric(interaction_engagement_code)))
+    )
 }
 
 

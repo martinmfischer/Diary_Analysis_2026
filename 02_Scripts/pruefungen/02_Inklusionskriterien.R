@@ -22,7 +22,7 @@ screened_ids <- intro_export$personalParticipantCode[
 ]
 
 # Die Uploadgrenze direkt aus den Rohfeldern zählen, vor allen Codierphasen
-duplicate_rows <- read.xlsx("06_Coding/coding_sheet_backup_2026-10-13_140323.xlsx", sheet = "Coding")
+duplicate_rows <- read.xlsx("Backups/Coding/coding_sheet_backup_2026-10-13_140323.xlsx", sheet = "Coding")
 duplicate_rows <- duplicate_rows %>% filter(is_marked_screenshot_duplicate(notes))
 raw_uploads <- diary_export %>%
   select(personalParticipantCode, matches("^daily_[0-9]+_screenshot$")) %>%
