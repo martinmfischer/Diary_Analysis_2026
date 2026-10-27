@@ -1,5 +1,5 @@
 # Methods: data and sample ------------------------------------------------------
-# Read the original exports and coding sheet. Participant images are not opened.
+# All study inputs are in 01_Data. Participant images are not opened.
 
 # 1. Questionnaire exports -----------------------------------------------------
 
@@ -35,12 +35,12 @@ stopifnot(
 # The exclusion lists retain original filenames for a direct match to the export.
 
 technical_exclusions <- read_csv(
-  "06_Coding/upload_exclusions.csv",
+  "01_Data/upload_exclusions.csv",
   show_col_types = FALSE
 )
 
 duplicate_uploads <- read_csv(
-  "06_Coding/duplicate_uploads.csv",
+  "01_Data/duplicate_uploads.csv",
   show_col_types = FALSE
 )
 
@@ -112,13 +112,13 @@ coding_variables <- c(
   "situation_code"
 )
 
-daily_raw <- read.xlsx("06_Coding/coding_sheet.xlsx", sheet = "Coding") %>%
+daily_raw <- read.xlsx("01_Data/coding_sheet.xlsx", sheet = "Coding") %>%
   mutate(
     across(c(participant, screenshot_id), clean_text),
     across(all_of(coding_variables), as.numeric)
   )
 
-codebook <- read.xlsx("06_Coding/coding_sheet.xlsx", sheet = "Codebook")
+codebook <- read.xlsx("01_Data/coding_sheet.xlsx", sheet = "Codebook")
 
 expected_codes <- list(
   public_rel_coded = c(1, 0, 99, 98, 97),
@@ -262,7 +262,7 @@ participation_summary <- bind_rows(
 
 # Pretest agreement is a stored input; this script does not recode screenshots.
 pretest_reliability <- read.xlsx(
-  "07_Pretest/pretest_reliability.xlsx",
+  "01_Data/pretest_reliability.xlsx",
   sheet = "Reliability"
 ) %>%
   transmute(

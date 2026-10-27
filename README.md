@@ -1,87 +1,97 @@
-# Auswertung der Social-Media-Tagebuchstudie
+# Social media diary study: analysis code
 
-Das Projekt enthält die Analysen für das Paper sowie zwei ausgewählte Zusatzanalysen. Code, Kommentare und Ausgaben sind auf Englisch. Diese README und die lokale Übergabeanleitung sind auf Deutsch.
+This project contains the manuscript analyses and two optional exploratory analyses. Analysis scripts produce tables and saved results. Separate reporting scripts create Markdown reports, PDFs and figures.
 
-## Einstieg
+## Getting started
 
-`Diary_Analysis_2026.Rproj` in RStudio öffnen und eine neue R-Sitzung starten. Alle Aufrufe werden aus dem Projektordner ausgeführt.
+Open `Diary_Analysis_2026.Rproj` in RStudio and start a fresh R session. Run all commands from the project root. Place the seven required input files in `01_Data/` before running an analysis; study data are not included in the repository or the OSF code archive.
 
 ```r
 source("01_Scripts/01_paper_analysis.R", encoding = "UTF-8")
 source("01_Scripts/checks.R", encoding = "UTF-8")
 ```
 
-Der erste Aufruf berechnet die Paper-Ergebnisse. Der zweite prüft die Auswahlregeln, Bezugsgrößen und zentralen Auswertungsregeln. Pakete werden mit `pacman::p_load()` geladen.
+The first script runs the manuscript analyses. The second checks sample selection, denominators, practice coding and model diagnostics. Run the checks immediately after the analysis, before loading report scripts.
 
-Die Ergebnisse stehen anschließend als R-Objekte und unter `outputs/` bereit:
+Packages are loaded with `pacman::p_load()`. Missing packages, including `pacman` itself, are installed automatically. An internet connection is required to install them.
 
-- `paper_tables.xlsx`: Tabellen in Manuskriptreihenfolge.
-- `paper_results.rds`: gespeicherte Ergebnisse für die Berichtserstellung.
-- `sample_audit.csv`: Ein- und Ausschlüsse je Person.
-- `session_info.txt`: verwendete R- und Paketversionen.
+Results are available as R objects and in `outputs/`:
 
-## Reihenfolge der Paper-Analysen
+- `paper_tables.xlsx`: tables in manuscript order.
+- `paper_results.rds`: saved results for the reporting scripts.
+- `sample_audit.csv`: inclusion decisions and exclusion reasons for each participant.
+- `session_info.txt`: R and package versions used for the analysis.
 
-| Abschnitt | Datei unter `01_Scripts/analysis/` | Inhalt |
+The scripts create `outputs/` when needed. Re-running an analysis replaces its output files. Input files are not modified.
+
+## Manuscript analyses
+
+| Section | File in `01_Scripts/analysis/` | Contents |
 | --- | --- | --- |
-| Methoden und Stichprobe | `01_data_and_sample.R` | Datenimport, Einschluss, Demografie, Teilnahme und gespeicherte Pretest-Reliabilität |
-| RQ1: Inhalte | `02_content.R` | Themen, Quellen, Formate, Plattformen, Werbung und Tabellen A1–A2 |
-| RQ2a: Kontexte | `03_contexts.R` | Ort und Gesellschaft; Vergleich mit typischer Nutzung im Intro |
-| RQ2b: Incidentality | `04_incidentalness.R` | Mittelwertindex, Alpha/Omega, Begegnungsarten, Survey–Diary-Vergleich mit Bootstrapintervallen und zwei Themenmodelle |
-| RQ2c: Praktiken | `05_practices.R` | Lesen/Ansehen, Recherche, Interaktion und „Nichts davon“; Anteile je Beitrag und je Person |
-| Export | `06_export.R` | Gemeinsame Excel-Datei und gespeicherte Ergebnisse für die Reports |
+| Methods and sample | `01_data_and_sample.R` | Data import, eligibility, sample selection, demographics, participation and stored pretest reliability estimates |
+| RQ1: content | `02_content.R` | Topics, sources, formats, platforms, advertising and Tables A1-A2 |
+| RQ2a: contexts | `03_contexts.R` | Spatial and social contexts; comparison with typical use reported in the initial survey |
+| RQ2b: incidentalness | `04_incidentalness.R` | Mean index, alpha and omega, encounter routes, survey-diary correlations with bootstrap intervals and two topic models |
+| RQ2c: practices | `05_practices.R` | Reading/viewing, further information seeking, visible interaction and "None of the above"; post-level and participant-level shares |
+| Export | `06_export.R` | Excel workbook and saved results for the reports |
 
-Die Themenmodelle bleiben erhalten, weil ihre Befunde im aktuellen Manuskript stehen. Nicht berichtete Themenpaarvergleiche und das zusätzliche Themenprofilmodell wurden entfernt. Bootstrapintervalle und Omega gehören jetzt zum normalen Paper-Durchlauf.
+Run the entry script rather than sourcing these files individually: each analysis step uses objects prepared by earlier steps. `helpers.R` contains shared data rules and table summaries. The two topic models are exploratory random-intercept logistic models; the manuscript reports their omnibus tests with Holm correction.
 
-## Zwei zusätzliche Explorationen
+## Two optional exploratory analyses
 
 ```r
 source("01_Scripts/02_selected_exploration.R", encoding = "UTF-8")
 ```
 
-1. **Facebook und Instagram bei denselben Personen:** Themen- und Quellenprofile, mindestens drei eingereichte Beiträge je Plattform. Jede Person zählt gleich. Der Vergleich ist beschreibend.
-2. **Informationsbedürfnisse und Praktiken:** Drei ausgewählte Zusammenhänge: Problemlösung und Recherche, thematisches Interesse und gezielte Suche, allgemeine Orientierung und Lesen/Ansehen. Je Person ein Wertepaar; Holm-Korrektur über die drei Tests.
+1. **Facebook and Instagram within the same participants:** topic and source profiles among participants with at least three publicly relevant submissions on each platform. Each participant receives equal weight. The comparison is descriptive.
+2. **Information needs and practices:** three selected associations: problem-solving needs and further information seeking; thematic interests and deliberate search; general orientation and thorough reading/viewing. Each analysis uses one pair of values per participant. Holm correction covers the three Spearman tests.
 
-Das Skript liest die gemeinsame Datenbasis selbst ein. Es berechnet die Paper-Modelle nicht erneut und verändert die Paper-Ergebnisse nicht. Die Ausgaben heißen `selected_exploration.xlsx` und `selected_exploration.rds`.
+This script can run independently of the manuscript analysis. It prepares the shared data in a separate environment, preserves existing manuscript data objects and does not refit the manuscript models. Its data objects are named `exploration_intro` and `exploration_posts`. Outputs are `selected_exploration.xlsx` and `selected_exploration.rds`.
 
-## Berichte und Abbildungen
+## Reports and figures
 
-Zuerst die jeweilige Analyse ausführen, danach bei Bedarf:
+Run the corresponding analysis first, then the required report:
 
 ```r
 source("01_Scripts/reporting/01_paper_report.R", encoding = "UTF-8")
 source("01_Scripts/reporting/02_exploration_report.R", encoding = "UTF-8")
 ```
 
-Die Reports lesen gespeicherte Ergebnisse und erzeugen Markdown, PDF und Abbildungen unter `outputs/`. Sie rechnen die Analysen nicht erneut. Für Berichte werden zusätzlich ggplot2, knitr, rmarkdown, Pandoc und XeLaTeX benötigt. Die reine Analyse braucht keine PDF-Software.
+Reports read saved results and create Markdown, PDF and figures in `outputs/`. They do not rerun the analyses. Reporting additionally uses ggplot2, knitr, rmarkdown, Pandoc and XeLaTeX. The analysis scripts do not require PDF software. Temporary PDF build files are removed automatically.
 
-Die drei Paper-Abbildungen stehen in `01_Scripts/reporting/paper_figures.R`. Figure 1 hebt die drei häufigsten Themen je Begegnungsart hervor. Einen Report erweitert man durch einen weiteren `report_section()`-Aufruf mit Tabelle, kurzer Zweckangabe und optionalem Bildpfad.
+The three manuscript figures are defined in `01_Scripts/reporting/paper_figures.R`. Figure 1 highlights the three most frequent topics within each encounter route. Figures 2 and 3 show the survey-diary comparison and participant-level practice shares by encounter route.
 
-## Benötigte lokale Daten
+To include a new manuscript table in a report, calculate it in the appropriate analysis step, add it to `paper_tables` in `06_export.R`, and add a `report_section()` call to the report. Each section has a title, a short explanation of the analysis purpose, a table and an optional figure. Rerun the analysis and then the report to update the saved results.
 
-| Datei | Inhalt |
+## Required input data
+
+All seven files must be placed directly in `01_Data/`. Both analysis entry points use the same inputs.
+
+| File | Contents |
 | --- | --- |
-| `01_Data/initial_survey.csv` | Originaler Intro-Export |
-| `01_Data/daily_survey.csv` | Originaler Daily-Export |
-| `01_Data/closing_survey.csv` | Originaler Outro-Export |
-| `06_Coding/coding_sheet.xlsx` | Finale Codierung und Codebook |
-| `06_Coding/upload_exclusions.csv` | Vier dokumentierte technische Ausschlüsse |
-| `06_Coding/duplicate_uploads.csv` | 23 dokumentierte Duplikate aus der ursprünglichen Coding-Sicherung |
-| `07_Pretest/pretest_reliability.xlsx` | Gespeicherte Reliabilitätswerte für den Methodenteil |
+| `01_Data/initial_survey.csv` | Original initial-survey export: screening, demographics, information needs, incidentalness items and typical contexts |
+| `01_Data/daily_survey.csv` | Original daily-survey export: uploads and scheduled questionnaire dates |
+| `01_Data/closing_survey.csv` | Original closing-survey export: completion status used for sample selection |
+| `01_Data/coding_sheet.xlsx` | Final coding and linked daily responses; worksheets `Coding` and `Codebook` |
+| `01_Data/upload_exclusions.csv` | Four documented technical exclusions |
+| `01_Data/duplicate_uploads.csv` | 23 documented duplicate uploads |
+| `01_Data/pretest_reliability.xlsx` | Stored pretest agreement estimates; worksheet `Reliability` |
 
-Die drei Fragebogen-CSV-Dateien sind mit Semikolon getrennt. Ihre Dateinamen wurden übersetzt; die Inhalte blieben unverändert. Originale Fragebogentexte, Rohvariablen und Bildnamen bleiben erhalten. Die Analyse öffnet keine Teilnehmerbilder und benötigt keine Datei aus `Backups/`.
+The three survey CSV files use semicolons as delimiters; the two exclusion lists use commas. Keep the file names and worksheet names unchanged. Original questionnaire wording, raw variable names and image file names are retained in the data. Screenshot files and historical working folders are not required to run the analyses. Pretest estimates are imported, not recalculated.
 
-## Wichtige Auswertungsregeln
+## Sample and scoring rules
 
-- Screening erfüllt, Intro und Outro abgeschlossen (`committed` vorhanden), mindestens sieben unterschiedliche Uploads nach Ausschlüssen. Keine Mindestzahl an Uploadtagen und keine zusätzlichen Abschlussflags.
-- Incidentality: Mittelwert aller sechs Items, Item 5 umgepolt, nur vollständige Antworten. Alpha und Omega werden mit `psych` berechnet; Omega behält die im Manuskript verwendete explorative Spezifikation mit drei Gruppenfaktoren.
-- Zufallsbegegnungen: Code 3. Begegnungen ohne gezielte Suche: Codes 2 und 3. Diese beiden Zusammenfassungen überlappen.
-- Dreimal −1 bei den Praxisantworten bedeutet „Nichts davon“ und wird zu dreimal 0. Echte fehlende Angaben bleiben fehlend.
-- Bei mittleren Personenanteilen zählt jede Person gleich. Bei Praktiken nach Begegnungsart gehen nur Personen mit gültigen Beiträgen dieser Art ein; die Gruppen können sich überschneiden und unterschiedlich groß sein.
-- Restkategorien bleiben gültige Inhaltskategorien. „Weiß nicht mehr“ und fehlende Kontexte entfallen beim Kontextvergleich auf Personenebene.
+- Inclusion requires passing the screening, completing the initial and closing surveys (`committed` present), and submitting at least seven distinct uploads after exclusions. There is no minimum number of upload days. Additional completion flags are not used.
+- The general incidentalness index is the mean of six items, with item 5 reversed. All six responses must be complete. Alpha and omega are calculated with `psych`; omega retains the exploratory specification with three group factors used in the manuscript.
+- Chance encounters are code 3. Encounters without targeted search combine codes 2 and 3. These definitions overlap.
+- Three -1 codes in the practice responses indicate the explicit "None of the above" option and are recoded to three zeros. Missing values in the three practice variables remain missing.
+- Participant-level means give each person equal weight. For practices by encounter route, participants contribute only to routes for which they have valid submissions. Groups can overlap and differ in size.
+- Residual content categories remain valid categories. "Cannot remember" and missing context responses are excluded when calculating participant-level context shares.
 
-## Git und Übergabe
+## Repository files
 
-Daten, Outputs, `Documentation/` und `Backups/` werden nicht versioniert. Ein Git-Checkout enthält deshalb nicht alle zum Rechnen benötigten Dateien. Die lokalen Eingaben müssen separat mitgegeben werden.
+The manuscript analysis requires `01_Scripts/01_paper_analysis.R` and the files in `01_Scripts/analysis/`. `02_selected_exploration.R` adds the optional explorations; `checks.R` checks the manuscript run. Reports additionally require the files in `01_Scripts/reporting/`, including both templates.
 
-Die [Übergabeanleitung](Documentation/Handover.md) erklärt die Weiterarbeit mit einem Beispiel. Frühere Skripte und Unterlagen liegen gesichert unter `Backups/English_Refactor_2026-10-23/`. Die alten Verwaltungs-, Vorbereitungs- und umfangreichen Zusatzskripte gehören nicht mehr zum aktiven Ablauf.
+`.gitignore` excludes local data and generated files from Git. The RStudio project file sets up the project workspace. This README describes how to run the code; `LICENSE` contains the GNU GPL v3 license text.
+
+Study data, outputs, local documentation, historical working folders and backups are not versioned or included in the OSF code archive. Supply the seven input files separately in `01_Data/` to run the analyses.

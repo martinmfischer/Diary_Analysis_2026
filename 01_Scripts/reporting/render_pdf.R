@@ -22,9 +22,10 @@ render_report_pdf <- function(markdown_file) {
     mustWork = TRUE
   )
 
-  dir.create("tmp", showWarnings = FALSE)
-  build_directory <- tempfile("report_", tmpdir = "tmp")
+  build_directory <- tempfile("diary_report_")
   dir.create(build_directory)
+  build_directory <- normalizePath(build_directory, mustWork = TRUE)
+  on.exit(unlink(build_directory, recursive = TRUE), add = TRUE)
 
   # rmarkdown handles compilation; templates only control presentation.
   rmarkdown::render(
@@ -41,7 +42,7 @@ render_report_pdf <- function(markdown_file) {
         "--variable=fontsize:10pt"
       )
     ),
-    intermediates_dir = normalizePath(build_directory),
+    intermediates_dir = build_directory,
     quiet = TRUE
   )
 }

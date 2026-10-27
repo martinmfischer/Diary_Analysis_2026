@@ -170,8 +170,7 @@ report <- c(
   report_section(
     title = "Encounter routes",
     purpose = "RQ2b: each post receives equal weight.",
-    table = tables$RQ2b_Encounter_posts,
-    figure = "figures/figure_1_topic_routes.png"
+    table = tables$RQ2b_Encounter_posts
   ),
   report_section(
     title = "Encounter routes with equal person weights",
@@ -181,6 +180,16 @@ report <- c(
     ),
     table = tables$RQ2b_Encounter_persons
   ),
+  "## Topic composition by encounter route",
+  "",
+  paste(
+    "Exploratory description linking RQ1 and RQ2b. Percentages refer to",
+    "valid topic codes within each route. The three most frequent topics",
+    "are highlighted. Each post receives equal weight."
+  ),
+  "",
+  "![Topic composition by encounter route](figures/figure_1_topic_routes.png)",
+  "",
   report_section(
     title = "Topic differences in encounter routes",
     purpose = paste(

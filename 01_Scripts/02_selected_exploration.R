@@ -8,17 +8,36 @@ if (!requireNamespace("pacman", quietly = TRUE)) {
   install.packages("pacman")
 }
 
-pacman::p_load(dplyr, tidyr, purrr, stringr, readr, openxlsx, writexl)
+pacman::p_load(dplyr, tidyr, purrr, stringr, readr, openxlsx, writexl, psych)
 
-source("01_Scripts/analysis/helpers.R", encoding = "UTF-8", local = TRUE)
-source("01_Scripts/analysis/01_data_and_sample.R", encoding = "UTF-8", local = TRUE)
-source("01_Scripts/analysis/02_content.R", encoding = "UTF-8", local = TRUE)
+# Prepare data separately so an earlier paper run keeps its R objects unchanged.
+exploration_data <- new.env()
+
+source(
+  "01_Scripts/analysis/helpers.R",
+  encoding = "UTF-8",
+  local = exploration_data
+)
+source(
+  "01_Scripts/analysis/01_data_and_sample.R",
+  encoding = "UTF-8",
+  local = exploration_data
+)
+source(
+  "01_Scripts/analysis/02_content.R",
+  encoding = "UTF-8",
+  local = exploration_data
+)
+
+exploration_intro <- exploration_data$intro
+exploration_posts <- exploration_data$daily_public
+rm(exploration_data)
 
 # 2. Compare Facebook and Instagram within the same people ---------------------
 # At least three submitted posts per platform. Each person receives equal weight.
 # This describes platform composition; it does not estimate a platform effect.
 
-paired_ids <- daily_public %>%
+paired_ids <- exploration_posts %>%
   filter(platform %in% c("Facebook", "Instagram")) %>%
   count(participant, platform) %>%
   filter(n >= 3) %>%
@@ -27,7 +46,7 @@ paired_ids <- daily_public %>%
   pull(participant)
 
 platform_profiles <- map(c("topic", "source"), function(dimension) {
-  valid_posts <- daily_public %>%
+  valid_posts <- exploration_posts %>%
     filter(
       participant %in% paired_ids,
       platform %in% c("Facebook", "Instagram"),
@@ -71,7 +90,7 @@ platform_profiles <- map(c("topic", "source"), function(dimension) {
 # Three theory-guided associations based on Hasebrink and Domeyer.
 # One pair per person; the measures do not establish need fulfilment.
 
-person_practices <- daily_public %>%
+person_practices <- exploration_posts %>%
   group_by(participant) %>%
   summarise(
     Research = mean(research, na.rm = TRUE),
@@ -87,7 +106,7 @@ person_practices <- daily_public %>%
     .groups = "drop"
   )
 
-needs <- intro %>%
+needs <- exploration_intro %>%
   select(
     participant,
     intro_ib_problem,
