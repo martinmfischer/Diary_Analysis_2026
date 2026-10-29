@@ -4,33 +4,40 @@
 
 # 1. Packages and shared data --------------------------------------------------
 
-if (!requireNamespace("pacman", quietly = TRUE)) {
-  install.packages("pacman")
-}
-
-pacman::p_load(dplyr, tidyr, purrr, stringr, readr, openxlsx, writexl, psych)
+source("02_Scripts/packages.R", encoding = "UTF-8", local = TRUE)
+load_packages(c(
+  "dplyr",
+  "tidyr",
+  "purrr",
+  "stringr",
+  "readr",
+  "openxlsx",
+  "psych",
+  "ggplot2"
+))
 
 # Prepare data separately so an earlier paper run keeps its R objects unchanged.
 exploration_data <- new.env()
 
 source(
-  "01_Scripts/analysis/helpers.R",
+  "02_Scripts/analysis/helpers.R",
   encoding = "UTF-8",
   local = exploration_data
 )
 source(
-  "01_Scripts/analysis/01_data_and_sample.R",
+  "02_Scripts/analysis/01_data_and_sample.R",
   encoding = "UTF-8",
   local = exploration_data
 )
 source(
-  "01_Scripts/analysis/02_content.R",
+  "02_Scripts/analysis/02_content.R",
   encoding = "UTF-8",
   local = exploration_data
 )
 
 exploration_intro <- exploration_data$intro
 exploration_posts <- exploration_data$daily_public
+write_result_tables <- exploration_data$write_result_tables
 rm(exploration_data)
 
 # 2. Compare Facebook and Instagram within the same people ---------------------
@@ -171,21 +178,29 @@ needs_correlations <- map(needs_plan$Rationale, function(rationale) {
 
 dir.create("outputs", showWarnings = FALSE)
 
-write_xlsx(
+write_result_tables(
   list(
     Paired_platform_profiles = platform_profiles,
-    Needs = needs_correlations
+    Needs = needs_correlations,
+    Needs_pairs = needs_pairs
   ),
-  "outputs/selected_exploration.xlsx"
+  "outputs/selected_exploration.xlsx",
+  readable_sheets = "Needs_pairs"
 )
 
-saveRDS(
-  list(
-    platform_profiles = platform_profiles,
-    needs_correlations = needs_correlations,
-    needs_pairs = needs_pairs
-  ),
-  "outputs/selected_exploration.rds"
+exploration_results <- list(
+  platform_profiles = platform_profiles,
+  needs_correlations = needs_correlations,
+  needs_pairs = needs_pairs
 )
+saveRDS(exploration_results, "outputs/selected_exploration.rds")
 
-message("Selected exploration complete: outputs/selected_exploration.xlsx")
+source("02_Scripts/figures/exploration_figures.R", encoding = "UTF-8", local = TRUE)
+draw_exploration_figures(exploration_results)
+
+message(
+  "Selected exploration complete. Files in ", normalizePath("outputs", winslash = "/"),
+  "\n  selected_exploration.xlsx: platform comparison, need correlations and figure data",
+  "\n  selected_exploration.rds: saved comparison and figure results",
+  "\n  figures/exploration_platforms.png, exploration_needs.png: both exploratory figures"
+)

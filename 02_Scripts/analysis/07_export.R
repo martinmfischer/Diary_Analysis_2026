@@ -10,6 +10,10 @@ paper_tables <- list(
   Methods_Participation = participation_summary,
   Methods_Pretest = pretest_reliability,
   Methods_Index_reliability = incidentalness_reliability,
+  Survey_Indices = survey_indices,
+  Survey_Intro_items = survey_intro_items,
+  Survey_Outro_items = survey_outro_items,
+  Survey_Index_scoring = survey_index_scoring,
   Corpus_Relevance = relevance,
   T1_Topics = topics,
   T2_Sources = sources,
@@ -29,6 +33,7 @@ paper_tables <- list(
   Figure1_Topic_routes = encounter_topics,
   RQ2b_Topic_models = topic_model_tests,
   RQ2b_Survey_diary = survey_diary,
+  Figure2_Survey_diary = calibration,
   RQ2c_Practice_posts = practice_summary,
   RQ2c_Practice_persons = practice_person_summary,
   Figure3_Practice_routes = practices_by_route
@@ -56,7 +61,11 @@ paper_tables[practice_table_names] <- map(
 # 2. Write tables and the sample audit -----------------------------------------
 
 dir.create("outputs", showWarnings = FALSE)
-write_xlsx(paper_tables, "outputs/paper_tables.xlsx")
+write_result_tables(
+  paper_tables, "outputs/paper_tables.xlsx",
+  c("Survey_Indices", "Survey_Intro_items", "Survey_Outro_items",
+    "Survey_Index_scoring", "Figure2_Survey_diary")
+)
 write_csv(sample_audit, "outputs/sample_audit.csv")
 
 # 3. Save the inputs for optional reporting ------------------------------------

@@ -5,15 +5,10 @@
 
 item_names <- paste0("intro_incidentality_", 1:6)
 
-scored_items <- intro %>%
-  select(all_of(item_names)) %>%
-  mutate(
-    across(everything(), ~ na_if(as.numeric(.x), -1)),
-    intro_incidentality_5 = 6 - intro_incidentality_5
-  )
-
-stopifnot(
-  all(is.na(as.matrix(scored_items)) | as.matrix(scored_items) %in% 1:5)
+scored_items <- score_survey_items(
+  intro,
+  item_names,
+  reversed = "intro_incidentality_5"
 )
 
 intro$incidentality_index <- rowMeans(scored_items, na.rm = FALSE)
@@ -47,18 +42,8 @@ omega_fit <- psych::omega(
 )
 
 # Do not report omega if the fitted solution has inadmissible variances.
-omega_loadings <- omega_fit$schmid$sl
-
-stopifnot(
-  all(is.finite(omega_loadings[, c("g", "h2", "u2")])),
-  all(omega_loadings[, "u2"] >= 0),
-  all(omega_loadings[, "h2"] <= 1),
-  is.finite(omega_fit$omega_h),
-  is.finite(omega_fit$omega.tot),
-  omega_fit$omega_h >= 0,
-  omega_fit$omega_h <= omega_fit$omega.tot,
-  omega_fit$omega.tot <= 1
-)
+incidentalness_omega <- describe_omega(omega_fit)
+stopifnot(!is.na(incidentalness_omega$Omega_total))
 
 incidentalness_reliability <- tibble(
   N = nrow(complete_items),

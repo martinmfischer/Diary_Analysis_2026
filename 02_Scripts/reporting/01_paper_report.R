@@ -1,19 +1,25 @@
 # Paper report -----------------------------------------------------------------
-# Run 01_Scripts/01_paper_analysis.R first. This script only presents saved results.
+# Run 02_Scripts/01_paper_analysis.R first. This script only presents saved results.
 
 # 1. Read results and load the presentation tools ------------------------------
 
-if (!requireNamespace("pacman", quietly = TRUE)) {
-  install.packages("pacman")
-}
-
-pacman::p_load(dplyr, tidyr, purrr, ggplot2, knitr, rmarkdown)
+source("02_Scripts/packages.R", encoding = "UTF-8", local = TRUE)
+load_packages(c(
+  "dplyr",
+  "tidyr",
+  "purrr",
+  "ggplot2",
+  "knitr",
+  "rmarkdown",
+  "tinytex"
+))
 
 results <- readRDS("outputs/paper_results.rds")
 tables <- results$tables
 
-source("01_Scripts/reporting/render_pdf.R", encoding = "UTF-8", local = TRUE)
-source("01_Scripts/reporting/paper_figures.R", encoding = "UTF-8", local = TRUE)
+source("02_Scripts/reporting/render_pdf.R", encoding = "UTF-8", local = TRUE)
+source("02_Scripts/figures/paper_figures.R", encoding = "UTF-8", local = TRUE)
+draw_paper_figures(results)
 
 # 2. Assemble sections in manuscript order -------------------------------------
 # To add a result, add a report_section() call with its table and purpose.
@@ -72,6 +78,46 @@ report <- c(
       "three-factor specification reported in the manuscript."
     ),
     table = tables$Methods_Index_reliability
+  ),
+  report_section(
+    title = "Intro and outro indices",
+    purpose = paste(
+      "Included participants; means require complete item responses.",
+      "Incidentalness item 5 and reactivity items 2, 3 and 5 are reversed",
+      "as 6 minus response. All three indices range from 1 to 5."
+    ),
+    table = select(tables$Survey_Indices, Measure, N:Maximum)
+  ),
+  report_section(
+    title = "Reliability of all survey indices",
+    purpose = paste(
+      "Alpha uses the scored items. Hierarchical and total omega retain",
+      "the historical exploratory group-factor specifications and Pearson",
+      "correlations. Inadmissible omega estimates are reported as NA.",
+      "Higher scores mean greater incidentalness, study reactivity or ease",
+      "of use, respectively."
+    ),
+    table = select(
+      tables$Survey_Indices, Measure, N, Items, Alpha,
+      Omega_hierarchical, Omega_total, Group_factors, Omega_status
+    )
+  ),
+  report_section(
+    title = "Intro items",
+    purpose = paste(
+      "Original item directions. Includes platform-use frequency, use",
+      "intensity, the four separate information needs and incidentalness",
+      "items. Reverse_for_index identifies the item reversed only for scoring."
+    ),
+    table = tables$Survey_Intro_items
+  ),
+  report_section(
+    title = "Outro items",
+    purpose = paste(
+      "Original responses on the five-point scales. Reverse_for_index",
+      "identifies the reactivity items reversed only for index scoring."
+    ),
+    table = tables$Survey_Outro_items
   ),
 
   # Diary corpus and RQ1
